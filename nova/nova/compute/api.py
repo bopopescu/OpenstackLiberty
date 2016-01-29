@@ -1976,10 +1976,15 @@ class API(base.Base):
     def force_stop(self, context, instance, do_cast=True, clean_shutdown=True):
         LOG.debug("Going to try to stop instance", instance=instance)
 
+        ### 1.将虚拟机的任务状态修改为'powering-off'
+        ###   将progress修改为0（什么作用？）
+        ###   调用虚拟机的save()函数将修改保存至虚拟机，
+        ###     expected_task_state参数会使save函数检查虚拟机的任务状态是否合法
         instance.task_state = task_states.POWERING_OFF
         instance.progress = 0
         instance.save(expected_task_state=[None])
 
+        ### 2.
         self._record_action_start(context, instance, instance_actions.STOP)
 
         self.compute_rpcapi.stop_instance(context, instance, do_cast=do_cast,
@@ -1991,6 +1996,7 @@ class API(base.Base):
     @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.ERROR])
     def stop(self, context, instance, do_cast=True, clean_shutdown=True):
         """Stop an instance."""
+        ### 1.调用force_stop函数
         self.force_stop(context, instance, do_cast, clean_shutdown)
 
     @check_instance_lock

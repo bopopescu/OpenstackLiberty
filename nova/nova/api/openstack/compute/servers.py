@@ -1152,11 +1152,13 @@ class ServersController(wsgi.Controller):
     @wsgi.action('os-stop')
     def _stop_server(self, req, id, body):
         """Stop an instance."""
+        ### 1.获取context, instance并验证是否有context权限
         context = req.environ['nova.context']
         instance = self._get_instance(context, id)
         authorize(context, instance, 'stop')
         LOG.debug('stop instance', instance=instance)
         try:
+            ### 2.调用nova.compute.api.API()中的stop()函数
             self.compute_api.stop(context, instance)
         except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
             raise webob.exc.HTTPConflict(explanation=e.format_message())
