@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 OpenStack Foundation
 # Copyright 2011 Piston Cloud Computing, Inc
 # All Rights Reserved.
@@ -979,11 +980,16 @@ class ServersController(wsgi.Controller):
         """Rebuild an instance with the given attributes."""
         rebuild_dict = body['rebuild']
 
+        ### 1.获取传入参数中的image的uuid
         image_href = rebuild_dict["imageRef"]
         image_href = self._image_uuid_from_href(image_href)
 
+        ### 2.从传入的参数中获取password，没有传入则随机生成一个
         password = self._get_server_admin_password(rebuild_dict)
 
+        ### 3.从请求中获取context
+        ###   通过context验证是否有权限进行'rebuild'
+        ###   获取instance
         context = req.environ['nova.context']
         authorize(context, action='rebuild')
         instance = self._get_server(context, req, id)
@@ -995,10 +1001,22 @@ class ServersController(wsgi.Controller):
 
         rebuild_kwargs = {}
 
+        ### self.rebuild_extension_manager:
+        ###     <stevedore.enabled.EnabledExtensionManager object at 0x6887450>
+        ### list(self.rebuild_extension_manager):
+        ###     [
+        ###         <stevedore.extension.Extension object at 0xaaaaaaa>,
+        ###         <stevedore.extension.Extension object at 0xbbbbbbb>,
+        ###         <stevedore.extension.Extension object at 0xccccccc>,
+        ###         <stevedore.extension.Extension object at 0xddddddd>，
+        ###     ]
         if list(self.rebuild_extension_manager):
             self.rebuild_extension_manager.map(self._rebuild_extension_point,
                                                rebuild_dict, rebuild_kwargs)
 
+        ### request_attribute   instance_attribute
+        ### 'name'              'display_name'
+        ### 'metadata'          'metadata'
         for request_attribute, instance_attribute in attr_map.items():
             try:
                 if request_attribute == 'name':

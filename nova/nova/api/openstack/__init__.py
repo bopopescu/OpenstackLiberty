@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -308,6 +309,10 @@ class APIRouterV21(base_wsgi.Router):
     @classmethod
     def factory(cls, global_config, **local_config):
         """Simple paste factory, :class:`nova.wsgi.Router` doesn't have one."""
+        ### cls: <class 'nova.api.openstack.compute.APIRouterV21'>
+        ### global_config: {'__file__': '/etc/nova/api-paste.ini', 'here': '/etc/nova'}
+        ### local_config: {}
+        ### 初始化一个APIRouterV21类的对象并返回
         return cls()
 
     @staticmethod
@@ -315,11 +320,6 @@ class APIRouterV21(base_wsgi.Router):
         return 'nova.api.v21.extensions'
 
     def __init__(self, init_only=None, v3mode=False):
-        # TODO(cyeoh): bp v3-api-extension-framework. Currently load
-        # all extensions but eventually should be able to exclude
-        # based on a config file
-        # TODO(oomichi): We can remove v3mode argument after moving all v3 APIs
-        # to v2.1.
         def _check_load_extension(ext):
             if (self.init_only is None or ext.obj.alias in
                 self.init_only) and isinstance(ext.obj,
@@ -336,11 +336,14 @@ class APIRouterV21(base_wsgi.Router):
                         return self._register_extension(ext)
             return False
 
+        ### CONF.osapi_v21.enabled: True
         if not CONF.osapi_v21.enabled:
             LOG.info(_LI("V2.1 API has been disabled by configuration"))
             LOG.warning(_LW("In the M release you must run the v2.1 API."))
             return
 
+        ### CONF.osapi_v21.extensions_blacklist: []
+        ### CONF.osapi_v21.extensions_whitelist: []
         if (CONF.osapi_v21.extensions_blacklist or
                 CONF.osapi_v21.extensions_whitelist):
             LOG.warning(
@@ -348,12 +351,16 @@ class APIRouterV21(base_wsgi.Router):
                 'The concept of API extensions will be removed from '
                 'the codebase to ensure there is a single Compute API.'))
 
+        ### self.init_only: None
         self.init_only = init_only
         LOG.debug("v21 API Extension Blacklist: %s",
                   CONF.osapi_v21.extensions_blacklist)
         LOG.debug("v21 API Extension Whitelist: %s",
                   CONF.osapi_v21.extensions_whitelist)
 
+        ### CONF.osapi_v21.extensions_whitelist: []
+        ### CONF.osapi_v21.extensions_blacklist: []
+        ### 获取上述两个list的交集
         in_blacklist_and_whitelist = set(
             CONF.osapi_v21.extensions_whitelist).intersection(
                 CONF.osapi_v21.extensions_blacklist)
@@ -361,12 +368,16 @@ class APIRouterV21(base_wsgi.Router):
             LOG.warning(_LW("Extensions in both blacklist and whitelist: %s"),
                         list(in_blacklist_and_whitelist))
 
+        ### namespace: 'nova.api.v21.extensions'
+        ### check_fun: <function _check_load_extension at 0x5907f50>
+        ### self.loaded_extension_info: <nova.api.openstack.compute.extension_info.LoadedExtensionInfo object at 0x55b0150>
         self.api_extension_manager = stevedore.enabled.EnabledExtensionManager(
             namespace=self.api_extension_namespace(),
             check_func=_check_load_extension,
             invoke_on_load=True,
             invoke_kwds={"extension_info": self.loaded_extension_info})
 
+        ### v3mode: False
         if v3mode:
             mapper = PlainMapper()
         else:
@@ -374,11 +385,9 @@ class APIRouterV21(base_wsgi.Router):
 
         self.resources = {}
 
-        # NOTE(cyeoh) Core API support is rewritten as extensions
-        # but conceptually still have core
+        ### self.api_extension_manager: <stevedore.enabled.EnabledExtensionManager object at 0x57a51d0>
+        ### mapper: <nova.api.openstack.ProjectMapper object at 0x57a5210>
         if list(self.api_extension_manager):
-            # NOTE(cyeoh): Stevedore raises an exception if there are
-            # no plugins detected. I wonder if this is a bug.
             self._register_resources_check_inherits(mapper)
             self.api_extension_manager.map(self._register_controllers)
 
@@ -399,9 +408,20 @@ class APIRouterV21(base_wsgi.Router):
             self._register_resources(ext, mapper)
 
     def _register_resources_check_inherits(self, mapper):
+        ### mapper: <nova.api.openstack.ProjectMapper object at 0x57a5210>
+
         ext_has_inherits = []
         ext_no_inherits = []
 
+        ### self.api_extension_manager: <stevedore.enabled.EnabledExtensionManager object at 0x57a51d0>
+        ### ext:
+        ###     <stevedore.extension.Extension object at 0x6b8c590>
+        ###     <stevedore.extension.Extension object at 0x6b8c790>
+        ###     <stevedore.extension.Extension object at 0x6b8cb50>
+        ###     <stevedore.extension.Extension object at 0x6ba9050>
+        ###     <stevedore.extension.Extension object at 0x6ba94d0>
+        ###     <stevedore.extension.Extension object at 0x6ba9890>
+        ###     <stevedore.extension.Extension object at 0x6a3cad0>
         for ext in self.api_extension_manager:
             for resource in ext.obj.get_resources():
                 if resource.inherits:

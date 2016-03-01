@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright (c) 2011 OpenStack Foundation
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -54,11 +55,29 @@ LOG = logging.getLogger(__name__)
 
 
 def _load_pipeline(loader, pipeline):
+    ### 当配置文件中auth_strategy='keystone'时：
+    ### loader: <paste.deploy.loadwsgi.ConfigLoader object at 0x5af7390>
+    ### pipeline: ['compute_req_id', 'faultwrap', 'sizelimit', 'authtoken', 'keystonecontext', 'legacy_v2_compatible', 'osapi_compute_app_v21']
+
+    ### filters: [
+    ###     <class 'nova.api.compute_req_id.ComputeReqIdMiddleware'>,
+    ###     <function _factory at 0x5b07b90>,
+    ###     <function middleware_filter at 0x5b07c80>,
+    ###     <function auth_filter at 0x5dc1c08>,
+    ###     <function _factory at 0x5dc1c80>,
+    ###     <function _factory at 0x5dc1cf8>
+    ### ]
     filters = [loader.get_filter(n) for n in pipeline[:-1]]
+
+    ### app: <nova.api.openstack.compute.APIRouterV21 object at 0x7c8bf10>
     app = loader.get_app(pipeline[-1])
+
+    ### 将列表filters中的元素反向
     filters.reverse()
     for filter in filters:
         app = filter(app)
+
+    ### app: <nova.api.compute_req_id.ComputeReqIdMiddleware object at 0x7e9aad0>
     return app
 
 
@@ -75,6 +94,12 @@ def pipeline_factory(loader, global_conf, **local_conf):
 
 def pipeline_factory_v21(loader, global_conf, **local_conf):
     """A paste pipeline replica that keys off of auth_strategy."""
+    ### loader: <paste.deploy.loadwsgi.ConfigLoader object at 0x5af7390>
+    ### global_conf: {'__file__': '/etc/nova/api-paste.ini', 'here': '/etc/nova'}
+    ### local_conf: {
+    ###     'noauth2': 'compute_req_id faultwrap sizelimit noauth2 legacy_v2_compatible osapi_compute_app_v21',
+    ###     'keystone': 'compute_req_id faultwrap sizelimit authtoken keystonecontext legacy_v2_compatible osapi_compute_app_v21'
+    ### }
     return _load_pipeline(loader, local_conf[CONF.auth_strategy].split())
 
 

@@ -155,6 +155,7 @@ import os
 import stat
 import tempfile
 import time
+from keystonemiddleware import auth_token
 
 import netaddr
 from oslo_config import cfg
