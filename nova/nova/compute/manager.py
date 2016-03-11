@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2011 Justin Santa Barbara
@@ -2209,6 +2210,9 @@ class ComputeManager(manager.Manager):
 
     def _get_power_off_values(self, context, instance, clean_shutdown):
         """Get the timing configuration for powering down this instance."""
+        ### 尝试instance.system_metadata中获取'image_os_shutdown_timeout'的值
+        ### 默认值为CONF.shutdown_timeout， 默认为60秒
+        ### self.SHUTDOWN_RETRY_INTERVAL = 10
         if clean_shutdown:
             timeout = compute_utils.get_value_from_system_metadata(instance,
                           key='image_os_shutdown_timeout', type=int,
@@ -2222,6 +2226,12 @@ class ComputeManager(manager.Manager):
 
     def _power_off_instance(self, context, instance, clean_shutdown=True):
         """Power off an instance on this host."""
+        ### if clean_shutdown:
+        ###     timeout = 60
+        ###     retry_interval = 10
+        ### else:
+        ###     timeout = 0
+        ###     retry_interval = 0
         timeout, retry_interval = self._get_power_off_values(context,
                                         instance, clean_shutdown)
         self.driver.power_off(instance, timeout, retry_interval)
@@ -2449,6 +2459,7 @@ class ComputeManager(manager.Manager):
 
         @utils.synchronized(instance.uuid)
         def do_stop_instance():
+            ### 1.获取虚拟机当前的power_state
             current_power_state = self._get_power_state(context, instance)
             LOG.debug('Stopping instance; current vm_state: %(vm_state)s, '
                       'current task_state: %(task_state)s, current DB '
@@ -2472,14 +2483,17 @@ class ComputeManager(manager.Manager):
                 LOG.info(_LI('Instance is already powered off in the '
                              'hypervisor when stop is called.'),
                          instance=instance)
+                ### expected_task_state = ['powering-off', None]
                 expected_task_state.append(None)
 
+            ### 通知虚拟机的关机操作开始（通知谁？）
             self._notify_about_instance_usage(context, instance,
                                               "power_off.start")
             self._power_off_instance(context, instance, clean_shutdown)
             instance.power_state = self._get_power_state(context, instance)
             instance.vm_state = vm_states.STOPPED
             instance.task_state = None
+            ### expected_task_state参数会使save函数检查虚拟机的任务状态是否合法
             instance.save(expected_task_state=expected_task_state)
             self._notify_about_instance_usage(context, instance,
                                               "power_off.end")

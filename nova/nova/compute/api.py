@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2011 Piston Cloud Computing, Inc.
@@ -1984,9 +1985,14 @@ class API(base.Base):
         instance.progress = 0
         instance.save(expected_task_state=[None])
 
-        ### 2.
+        ### 2.将stop的开始记录到数据库nova的表instance_actions中
+        ###   包括如下内容：
+        ###       'request_id', 'instance_uuid', 'user_id'
+        ###       'project_id', 'action', 'start_time'
         self._record_action_start(context, instance, instance_actions.STOP)
 
+        ### 3.调用rpcapi中的stop_instance函数，do_cast=True，clean_shutdown=True
+        ###   do_cast表明rpc使用cast的方式
         self.compute_rpcapi.stop_instance(context, instance, do_cast=do_cast,
                                           clean_shutdown=clean_shutdown)
 

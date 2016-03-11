@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -685,6 +686,7 @@ class LibvirtDriver(driver.ComputeDriver):
         disk.teardown_container(container_dir, rootfs_dev)
 
     def _destroy(self, instance, attempt=1):
+        ### 通过instance获得guest，没找到instance则guest设置为None
         try:
             guest = self._host.get_guest(instance)
         except exception.InstanceNotFound:
@@ -694,76 +696,78 @@ class LibvirtDriver(driver.ComputeDriver):
         # Otherwise, destroy it
         old_domid = -1
         if guest is not None:
-            try:
+            #try:
                 old_domid = guest.id
+                ### 调用domain的destroy()函数
                 guest.poweroff()
 
-            except libvirt.libvirtError as e:
-                is_okay = False
-                errcode = e.get_error_code()
-                if errcode == libvirt.VIR_ERR_NO_DOMAIN:
-                    # Domain already gone. This can safely be ignored.
-                    is_okay = True
-                elif errcode == libvirt.VIR_ERR_OPERATION_INVALID:
-                    # If the instance is already shut off, we get this:
-                    # Code=55 Error=Requested operation is not valid:
-                    # domain is not running
-
-                    # TODO(sahid): At this point we should be a Guest object
-                    state = guest.get_power_state(self._host)
-                    if state == power_state.SHUTDOWN:
-                        is_okay = True
-                elif errcode == libvirt.VIR_ERR_INTERNAL_ERROR:
-                    errmsg = e.get_error_message()
-                    if (CONF.libvirt.virt_type == 'lxc' and
-                        errmsg == 'internal error: '
-                                  'Some processes refused to die'):
-                        # Some processes in the container didn't die
-                        # fast enough for libvirt. The container will
-                        # eventually die. For now, move on and let
-                        # the wait_for_destroy logic take over.
-                        is_okay = True
-                elif errcode == libvirt.VIR_ERR_OPERATION_TIMEOUT:
-                    LOG.warn(_LW("Cannot destroy instance, operation time "
-                                 "out"),
-                             instance=instance)
-                    reason = _("operation time out")
-                    raise exception.InstancePowerOffFailure(reason=reason)
-                elif errcode == libvirt.VIR_ERR_SYSTEM_ERROR:
-                    if e.get_int1() == errno.EBUSY:
-                        # NOTE(danpb): When libvirt kills a process it sends it
-                        # SIGTERM first and waits 10 seconds. If it hasn't gone
-                        # it sends SIGKILL and waits another 5 seconds. If it
-                        # still hasn't gone then you get this EBUSY error.
-                        # Usually when a QEMU process fails to go away upon
-                        # SIGKILL it is because it is stuck in an
-                        # uninterruptable kernel sleep waiting on I/O from
-                        # some non-responsive server.
-                        # Given the CPU load of the gate tests though, it is
-                        # conceivable that the 15 second timeout is too short,
-                        # particularly if the VM running tempest has a high
-                        # steal time from the cloud host. ie 15 wallclock
-                        # seconds may have passed, but the VM might have only
-                        # have a few seconds of scheduled run time.
-                        LOG.warn(_LW('Error from libvirt during destroy. '
-                                     'Code=%(errcode)s Error=%(e)s; '
-                                     'attempt %(attempt)d of 3'),
-                                 {'errcode': errcode, 'e': e,
-                                  'attempt': attempt},
-                                 instance=instance)
-                        with excutils.save_and_reraise_exception() as ctxt:
-                            # Try up to 3 times before giving up.
-                            if attempt < 3:
-                                ctxt.reraise = False
-                                self._destroy(instance, attempt + 1)
-                                return
-
-                if not is_okay:
-                    with excutils.save_and_reraise_exception():
-                        LOG.error(_LE('Error from libvirt during destroy. '
-                                      'Code=%(errcode)s Error=%(e)s'),
-                                  {'errcode': errcode, 'e': e},
-                                  instance=instance)
+            ### 处理libvirt抛出的各种错误
+            # except libvirt.libvirtError as e:
+            #     is_okay = False
+            #     errcode = e.get_error_code()
+            #     if errcode == libvirt.VIR_ERR_NO_DOMAIN:
+            #         # Domain already gone. This can safely be ignored.
+            #         is_okay = True
+            #     elif errcode == libvirt.VIR_ERR_OPERATION_INVALID:
+            #         # If the instance is already shut off, we get this:
+            #         # Code=55 Error=Requested operation is not valid:
+            #         # domain is not running
+            #
+            #         # TODO(sahid): At this point we should be a Guest object
+            #         state = guest.get_power_state(self._host)
+            #         if state == power_state.SHUTDOWN:
+            #             is_okay = True
+            #     elif errcode == libvirt.VIR_ERR_INTERNAL_ERROR:
+            #         errmsg = e.get_error_message()
+            #         if (CONF.libvirt.virt_type == 'lxc' and
+            #             errmsg == 'internal error: '
+            #                       'Some processes refused to die'):
+            #             # Some processes in the container didn't die
+            #             # fast enough for libvirt. The container will
+            #             # eventually die. For now, move on and let
+            #             # the wait_for_destroy logic take over.
+            #             is_okay = True
+            #     elif errcode == libvirt.VIR_ERR_OPERATION_TIMEOUT:
+            #         LOG.warn(_LW("Cannot destroy instance, operation time "
+            #                      "out"),
+            #                  instance=instance)
+            #         reason = _("operation time out")
+            #         raise exception.InstancePowerOffFailure(reason=reason)
+            #     elif errcode == libvirt.VIR_ERR_SYSTEM_ERROR:
+            #         if e.get_int1() == errno.EBUSY:
+            #             # NOTE(danpb): When libvirt kills a process it sends it
+            #             # SIGTERM first and waits 10 seconds. If it hasn't gone
+            #             # it sends SIGKILL and waits another 5 seconds. If it
+            #             # still hasn't gone then you get this EBUSY error.
+            #             # Usually when a QEMU process fails to go away upon
+            #             # SIGKILL it is because it is stuck in an
+            #             # uninterruptable kernel sleep waiting on I/O from
+            #             # some non-responsive server.
+            #             # Given the CPU load of the gate tests though, it is
+            #             # conceivable that the 15 second timeout is too short,
+            #             # particularly if the VM running tempest has a high
+            #             # steal time from the cloud host. ie 15 wallclock
+            #             # seconds may have passed, but the VM might have only
+            #             # have a few seconds of scheduled run time.
+            #             LOG.warn(_LW('Error from libvirt during destroy. '
+            #                          'Code=%(errcode)s Error=%(e)s; '
+            #                          'attempt %(attempt)d of 3'),
+            #                      {'errcode': errcode, 'e': e,
+            #                       'attempt': attempt},
+            #                      instance=instance)
+            #             with excutils.save_and_reraise_exception() as ctxt:
+            #                 # Try up to 3 times before giving up.
+            #                 if attempt < 3:
+            #                     ctxt.reraise = False
+            #                     self._destroy(instance, attempt + 1)
+            #                     return
+            #
+            #     if not is_okay:
+            #         with excutils.save_and_reraise_exception():
+            #             LOG.error(_LE('Error from libvirt during destroy. '
+            #                           'Code=%(errcode)s Error=%(e)s'),
+            #                       {'errcode': errcode, 'e': e},
+            #                       instance=instance)
 
         def _wait_for_destroy(expected_domid):
             """Called at an interval until the VM is gone."""
@@ -772,12 +776,14 @@ class LibvirtDriver(driver.ComputeDriver):
             #             attempted because we would prefer destroy to
             #             never fail.
             try:
+                ### 从instance获取domain的state及domain ID
                 dom_info = self.get_info(instance)
                 state = dom_info.state
                 new_domid = dom_info.id
             except exception.InstanceNotFound:
                 LOG.info(_LI("During wait destroy, instance disappeared."),
                          instance=instance)
+                ### 通过抛出这个异常来正常退出一个loop
                 raise loopingcall.LoopingCallDone()
 
             if state == power_state.SHUTDOWN:
@@ -790,12 +796,16 @@ class LibvirtDriver(driver.ComputeDriver):
             #                domain here, if it changed and the instance is
             #                still running, we should destroy it again.
             # see https://bugs.launchpad.net/nova/+bug/1111213 for more details
+
+            ### 新获得的domain_id与原来保存的domain_id不想等，说明虚拟机又开机了，
+            ### 嵌套调用_destroy()再关机
             if new_domid != expected_domid:
                 LOG.info(_LI("Instance may be started again."),
                          instance=instance)
                 kwargs['is_running'] = True
                 raise loopingcall.LoopingCallDone()
 
+        ### 产生一个timer来0.5秒调用一次检查虚拟机状态等待虚拟机退出
         kwargs = {'is_running': False}
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_destroy,
                                                      old_domid)
@@ -2271,12 +2281,14 @@ class LibvirtDriver(driver.ComputeDriver):
 
         :returns: True if the shutdown succeeded
         """
+        ### 正常关机时，timeout=60, retry_interval=10
 
         # List of states that represent a shutdown instance
         SHUTDOWN_STATES = [power_state.SHUTDOWN,
                            power_state.CRASHED]
 
         try:
+            ### 由instance获取domain
             guest = self._host.get_guest(instance)
 
             # TODO(sahid): We are converting all calls from a
@@ -2284,11 +2296,12 @@ class LibvirtDriver(driver.ComputeDriver):
             # We should be able to remove dom at the end.
             dom = guest._domain
         except exception.InstanceNotFound:
-            # If the instance has gone then we don't need to
-            # wait for it to shutdown
+            ### 没找到虚拟机说明没有虚拟机需要关机，返回True
             return True
 
+        ### 获取虚拟机的power_state
         state = guest.get_power_state(self._host)
+        ### 如果虚拟机的power_state已经为关机，则返回True
         if state in SHUTDOWN_STATES:
             LOG.info(_LI("Instance already shutdown."),
                      instance=instance)
@@ -2296,9 +2309,16 @@ class LibvirtDriver(driver.ComputeDriver):
 
         LOG.debug("Shutting down instance from state %s", state,
                   instance=instance)
+        ### 调用domain的shutdown()函数
         dom.shutdown()
         retry_countdown = retry_interval
 
+        ### 每隔1秒钟循环一次，循环中进行如下操作：
+        ###   1.根据instance获取domain
+        ###   2.根据domain获取power_state
+        ###   3.如果power_state已为关闭，则返回True
+        ###   4.如果power_state还没为关闭，则隔retry_interval秒后重新调用domain.shutdown()函数
+        ###   5.如果timeout秒后，虚拟机power_state还没变为关闭，则返回False
         for sec in six.moves.range(timeout):
 
             guest = self._host.get_guest(instance)
@@ -2346,6 +2366,8 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def power_off(self, instance, timeout=0, retry_interval=0):
         """Power off the specified instance."""
+        ### 调用关机接口时，默认timeout=60, retry_interval=10
+        ### 在_clean_shutdown中均为调用dom.shutdown()
         if timeout:
             self._clean_shutdown(instance, timeout, retry_interval)
         self._destroy(instance)
