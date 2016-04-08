@@ -1151,11 +1151,13 @@ class ServersController(wsgi.Controller):
     @wsgi.action('os-start')
     def _start_server(self, req, id, body):
         """Start an instance."""
+        ### 1.获取context, instance并验证是否有start权限
         context = req.environ['nova.context']
         instance = self._get_instance(context, id)
         authorize(context, instance, 'start')
         LOG.debug('start instance', instance=instance)
         try:
+            ### 2.调用nova.compute.api.API()中的start()函数
             self.compute_api.start(context, instance)
         except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
             raise webob.exc.HTTPConflict(explanation=e.format_message())
@@ -1170,7 +1172,7 @@ class ServersController(wsgi.Controller):
     @wsgi.action('os-stop')
     def _stop_server(self, req, id, body):
         """Stop an instance."""
-        ### 1.获取context, instance并验证是否有context权限
+        ### 1.获取context, instance并验证是否有stop权限
         context = req.environ['nova.context']
         instance = self._get_instance(context, id)
         authorize(context, instance, 'stop')

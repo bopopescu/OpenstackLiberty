@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright (c) 2010 Cloud.com, Inc
 # Copyright 2012 Cloudbase Solutions Srl
 # All Rights Reserved.
@@ -139,6 +140,8 @@ class VMOps(object):
 
     def _load_vif_driver_class(self):
         try:
+            ### 根据配置获取网络服务的driver，CONF.network_api_class默认为nova.network.api.API，但一般会改为Neutron
+            ### 所以一般使用的driver为'nova.virt.hyperv.vif.HyperVNeutronVIFDriver'
             class_name = self._vif_driver_class_map[CONF.network_api_class]
             self._vif_driver = importutils.import_object(class_name)
         except KeyError:

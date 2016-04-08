@@ -1336,6 +1336,7 @@ class LibvirtDriver(driver.ComputeDriver):
         This command only works with qemu 0.14+
         """
         try:
+            ### 通过instance获取domain
             guest = self._host.get_guest(instance)
 
             # TODO(sahid): We are converting all calls from a
@@ -1345,12 +1346,16 @@ class LibvirtDriver(driver.ComputeDriver):
         except exception.InstanceNotFound:
             raise exception.InstanceNotRunning(instance_id=instance.uuid)
 
+        ### 从虚拟机的system_metadata的image相关信息创建一个新的虚拟机object
         image_meta = objects.ImageMeta.from_instance(instance)
 
+        ### 获取传入的image_id对应的image的具体信息
         snapshot = self._image_api.get(context, image_id)
 
         # source_format is an on-disk format
         # source_type is a backend type
+        ### 从domain的xml中获取主磁盘的路径和格式('raw', 'qcow2'...)
+        ### 从获得的磁盘路径中判断磁盘的类型('lvm', 'rbd'..)
         disk_path, source_format = libvirt_utils.find_disk(virt_dom)
         source_type = libvirt_utils.get_disk_type_from_path(disk_path)
 
@@ -1365,17 +1370,20 @@ class LibvirtDriver(driver.ComputeDriver):
         # snapshot_backend is going to default to CONF.libvirt.images_type
         # below, which is still safe.
 
-        image_format = CONF.libvirt.snapshot_image_format or source_type
+        ### 没有在配置文件中加入配置snapshot_image_fromat时，image_format=source_type
+        image_format = CONF.libvirt.snapshot_image_fromat or source_type
 
         # NOTE(bfilippov): save lvm and rbd as raw
         if image_format == 'lvm' or image_format == 'rbd':
             image_format = 'raw'
 
+        ### 利用传入的信息构建一个metadata的字典
         metadata = self._create_snapshot_metadata(image_meta,
                                                   instance,
                                                   image_format,
                                                   snapshot['name'])
 
+        ### 随机产生一个snapshot的name
         snapshot_name = uuid.uuid4().hex
 
         state = guest.get_power_state(self._host)
@@ -1388,6 +1396,19 @@ class LibvirtDriver(driver.ComputeDriver):
         #               redundant because LVM supports only cold snapshots.
         #               It is necessary in case this situation changes in the
         #               future.
+
+        ### MIN_LIBVIRT_LIVESNAPSHOT_VERSION = (1, 0, 0)
+        ### MIN_QEMU_LIVESNAPSHOT_VERSION = (1, 3, 0)
+        ### HV_DRIVER_QEMU = "QEMU"
+
+        ### 当满足下列条件时，进行live_snapshot：
+        ###     host的libvirt version, hypervisor version, and hypervisor type符合要求
+        ###         即：　libvirt >= 1.0.0  qemu >= 1.3.0  driver = 'qemu'
+        ###     虚拟机的主磁盘不是'lvm'或者'rbd'
+        ###     不加密临时存储（默认不加密）
+        ###     没有设置不允许在线快照（默认不允许）
+        ###     虚拟机的block job可以停下来
+        ### 否则进行cold_snapshot
         if (self._host.has_min_version(MIN_LIBVIRT_LIVESNAPSHOT_VERSION,
                                        MIN_QEMU_LIVESNAPSHOT_VERSION,
                                        host.HV_DRIVER_QEMU)
@@ -1413,10 +1434,16 @@ class LibvirtDriver(driver.ComputeDriver):
         # NOTE(rmk): We cannot perform live snapshots when a managedSave
         #            file is present, so we will use the cold/legacy method
         #            for instances which are shutdown.
+
+        ### 虚拟机关机直接调cold_snapshot
         if state == power_state.SHUTDOWN:
             live_snapshot = False
 
         # NOTE(dkang): managedSave does not work for LXC
+
+        ### 如果虚拟化类型不为'lxc'，并且需要进行的是cold_snapshot:
+        ###     当虚拟机的电源状态为运行或者暂停时，detach虚拟机使用的pci设备和使用了SR-IOV技术的端口
+        ###     调用managedSave()函数挂起虚拟机
         if CONF.libvirt.virt_type != 'lxc' and not live_snapshot:
             if state == power_state.RUNNING or state == power_state.PAUSED:
                 self._detach_pci_devices(guest,
@@ -1424,6 +1451,7 @@ class LibvirtDriver(driver.ComputeDriver):
                 self._detach_sriov_ports(context, instance, guest)
                 guest.save_memory_state()
 
+        ### ???
         snapshot_backend = self.image_backend.snapshot(instance,
                 disk_path,
                 image_type=source_type)
@@ -1435,14 +1463,27 @@ class LibvirtDriver(driver.ComputeDriver):
             LOG.info(_LI("Beginning cold snapshot process"),
                      instance=instance)
 
+        ### 将虚拟机任务状态修改为'image_pending_upload'
+        ### update_task_state()为传入的函数
         update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
+        ### snapshot_directory = '$instances_path/snapshots'
+        ### instance_path在配置文件中
         snapshot_directory = CONF.libvirt.snapshots_directory
+        ### 确定所指定的路径存在且是一个目录
         fileutils.ensure_tree(snapshot_directory)
+        ### 准备一个临时目录
         with utils.tempdir(dir=snapshot_directory) as tmpdir:
             try:
                 out_path = os.path.join(tmpdir, snapshot_name)
                 if live_snapshot:
                     # NOTE(xqueralt): libvirt needs o+x in the temp directory
+                    ### 将临时目录修改权限后调用在线快照
+                    ### _live_snapshot()各参数来源如下：
+                    ###     disk_path： 从domain的XML中获取
+                    ###     out_path： CONF.instances_path/snapshots/(uuid.uuid4().hex)
+                    ###     source_format: 从domain的XML中获取
+                    ###     image_format： CONF.libvirt.snapshot_image_fromat or source_type
+                    ###     image_meta： 从虚拟机的system_metadata的image相关信息创建一个新的虚拟机object
                     os.chmod(tmpdir, 0o701)
                     self._live_snapshot(context, instance, guest, disk_path,
                                         out_path, source_format, image_format,
@@ -1481,7 +1522,7 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def _can_set_admin_password(self, image_meta):
         if (CONF.libvirt.virt_type not in ('kvm', 'qemu') or
-            not self._host.has_min_version(MIN_LIBVIRT_SET_ADMIN_PASSWD)):
+                not self._host.has_min_version(MIN_LIBVIRT_SET_ADMIN_PASSWD)):
             raise exception.SetAdminPasswdNotSupported()
 
         hw_qga = image_meta.properties.get('hw_qemu_guest_agent', '')
@@ -1553,14 +1594,23 @@ class LibvirtDriver(driver.ComputeDriver):
 
     def _live_snapshot(self, context, instance, guest, disk_path, out_path,
                        source_format, image_format, image_meta):
-        """Snapshot an instance without downtime."""
+        """Snapshot an instance without downtime.
+        ###     disk_path： 从domain的XML中获取
+        ###     out_path： CONF.instances_path/snapshots/(uuid.uuid4().hex)
+        ###     source_format: 从domain的XML中获取
+        ###     image_format： CONF.libvirt.snapshot_image_fromat or source_type
+        ###     image_meta： 从虚拟机的system_metadata的image相关信息创建一个新的虚拟机object
+        """
+        ### dev为一个guest中BlockDevice的对象，这个对象的成员函数都是libvirt中block device相关的函数
         dev = guest.get_block_device(disk_path)
 
         # Save a copy of the domain's persistent XML file
+        ### 获取虚拟机的XML
         xml = guest.get_xml_desc(dump_inactive=True, dump_sensitive=True)
 
         # Abort is an idempotent operation, so make sure any block
         # jobs which may have failed are ended.
+        ### 将这个磁盘的I/O操作都停下来
         try:
             dev.abort_job()
         except Exception:
@@ -1570,15 +1620,19 @@ class LibvirtDriver(driver.ComputeDriver):
         #             in QEMU 1.3. In order to do this, we need to create
         #             a destination image with the original backing file
         #             and matching size of the instance root disk.
+        ### 使用qemu-img info命令获取虚拟机磁盘的大小和磁盘的backing_file
         src_disk_size = libvirt_utils.get_disk_size(disk_path,
                                                     format=source_format)
         src_back_path = libvirt_utils.get_disk_backing_file(disk_path,
                                                         format=source_format,
                                                         basename=False)
         disk_delta = out_path + '.delta'
+        ### 使用qemu-img create -f qcow2命令创建COW image   什么用???
         libvirt_utils.create_cow_image(src_back_path, disk_delta,
                                        src_disk_size)
 
+        ### 冻结虚拟机的文件系统为snapshot作准备
+        ### 需要安装'qemu-guest-agent'来冻结文件系统
         require_quiesce = image_meta.properties.get(
             'os_require_quiesce', False)
         if require_quiesce:
@@ -1589,6 +1643,10 @@ class LibvirtDriver(driver.ComputeDriver):
             #             domains, so we need to temporarily undefine it.
             #             If any part of this block fails, the domain is
             #             re-defined regardless.
+            ### blockRebase不能在持久化的虚拟机上运行，所以我们需要临时的undefine它。
+            ### 如果这个过程中出现了任何错误，虚拟机都将被重新define。
+            ### 调用Libvirt的isPersistent()函数来判断虚拟机是否是持久化的虚拟机。
+            ### delete_configuration()是将一个虚拟机从hypervisor中undefine
             if guest.has_persistent_configuration():
                 guest.delete_configuration()
 
@@ -1627,6 +1685,7 @@ class LibvirtDriver(driver.ComputeDriver):
         """
 
         try:
+            ### self._volume_api = volume.API()
             self._volume_api.update_snapshot_status(context,
                                                     snapshot_id,
                                                     status)

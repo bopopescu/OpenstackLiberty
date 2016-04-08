@@ -2532,8 +2532,13 @@ class ComputeManager(manager.Manager):
     @wrap_instance_fault
     def start_instance(self, context, instance):
         """Starting an instance on this host."""
+        ### 通知虚拟机的开机操作开始（通知谁？）
         self._notify_about_instance_usage(context, instance, "power_on.start")
         self._power_on(context, instance)
+
+        ### 获取虚拟机实际的电源状态存入到虚拟机信息中
+        ### 将虚拟机状态修改为'active'
+        ### 将虚拟机任务状态设置为None
         instance.power_state = self._get_power_state(context, instance)
         instance.vm_state = vm_states.ACTIVE
         instance.task_state = None
@@ -4176,11 +4181,18 @@ class ComputeManager(manager.Manager):
         :param image_id: an image id to snapshot to.
         :param clean_shutdown: give the GuestOS a chance to stop
         """
+        ### ??
         compute_utils.notify_usage_exists(self.notifier, context, instance,
                                           current_period=True)
+
+        ### 通知虚拟机的'shelve'操作开始（通知谁？）
         self._notify_about_instance_usage(context, instance, 'shelve.start')
 
         def update_task_state(task_state, expected_state=task_states.SHELVING):
+            ### 更新虚拟机的任务状态
+            ### task_states.IMAGE_PENDING_UPLOAD: 'image_pending_upload'
+            ### task_states.IMAGE_UPLOADING: 'shelving_image_uploading'
+            ### task_states.SHELVING: 'shelving'
             shelving_state_map = {
                     task_states.IMAGE_PENDING_UPLOAD:
                         task_states.SHELVING_IMAGE_PENDING_UPLOAD,
@@ -4192,7 +4204,10 @@ class ComputeManager(manager.Manager):
             instance.task_state = task_state
             instance.save(expected_task_state=expected_state)
 
+        ### 关闭虚拟机，clean_shutdown=True
         self._power_off_instance(context, instance, clean_shutdown)
+
+        ### 调用virt.libvirt.driver中的snapshot()函数
         self.driver.snapshot(context, instance, image_id, update_task_state)
 
         instance.system_metadata['shelved_at'] = timeutils.strtime()

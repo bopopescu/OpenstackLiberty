@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2013 Cloudbase Solutions Srl
 # All Rights Reserved.
 #
@@ -58,13 +59,19 @@ class VMUtilsV2(vmutils.VMUtils):
     _METRIC_ENABLED = 2
 
     _STORAGE_ALLOC_SETTING_DATA_CLASS = 'Msvm_StorageAllocationSettingData'
-    _ETHERNET_PORT_ALLOCATION_SETTING_DATA_CLASS = \
-    'Msvm_EthernetPortAllocationSettingData'
+    _ETHERNET_PORT_ALLOCATION_SETTING_DATA_CLASS = 'Msvm_EthernetPortAllocationSettingData'
 
     _VIRT_DISK_CONNECTION_ATTR = "HostResource"
 
     _AUTOMATIC_STARTUP_ACTION_NONE = 2
 
+    ### constants.HYPERV_VM_STATE_OTHER = 1
+    ### constants.HYPERV_VM_STATE_ENABLED = 2
+    ### constants.HYPERV_VM_STATE_DISABLED = 3
+    ### constants.HYPERV_VM_STATE_SHUTTING_DOWN = 4
+    ### constants.HYPERV_VM_STATE_REBOOT = 10
+    ### constants.HYPERV_VM_STATE_PAUSED = 32768
+    ### constants.HYPERV_VM_STATE_SUSPENDED = 32769
     _vm_power_states_map = {constants.HYPERV_VM_STATE_ENABLED: 2,
                             constants.HYPERV_VM_STATE_DISABLED: 3,
                             constants.HYPERV_VM_STATE_SHUTTING_DOWN: 4,
@@ -76,17 +83,22 @@ class VMUtilsV2(vmutils.VMUtils):
         if sys.platform == 'win32':
             # A separate WMI class for VM serial ports has been introduced
             # in Windows 10 / Windows Server 2016
+            ### 在vmutilsv1中_SERIAL_PORT_SETTING_DATA_CLASS = 'Msvm_ResourceAllocationSettingData'
+            ### 如果Windows内核版本大于等于10.0，则将_SERIAL_PORT_SETTING_DATA_CLASS设置为"Msvm_SerialPortSettingData"
             if hostutils.HostUtils().check_min_windows_version(10, 0):
                 self._SERIAL_PORT_SETTING_DATA_CLASS = (
                     "Msvm_SerialPortSettingData")
         super(VMUtilsV2, self).__init__(host)
 
     def _init_hyperv_wmi_conn(self, host):
+        ### 初始化hyperv_wmi的连接
         self._conn = wmi.WMI(moniker='//%s/root/virtualization/v2' % host)
 
     def list_instance_notes(self):
         instance_notes = []
 
+        ### 调用WMI的Msvm_VirtualSystemSettingData()函数获取虚拟机相关信息('ElementName', 'Notes')
+        ### self._VIRTUAL_SYSTEM_TYPE_REALIZED = 'Microsoft:Hyper-V:System:Realized'
         for vs in self._conn.Msvm_VirtualSystemSettingData(
                 ['ElementName', 'Notes'],
                 VirtualSystemType=self._VIRTUAL_SYSTEM_TYPE_REALIZED):
@@ -98,6 +110,8 @@ class VMUtilsV2(vmutils.VMUtils):
 
     def list_instances(self):
         """Return the names of all the instances known to Hyper-V."""
+        ### 调用WMI的Msvm_VirtualSystemSettingData()函数获取虚拟机相关信息('ElementName')
+        ### self._VIRTUAL_SYSTEM_TYPE_REALIZED = 'Microsoft:Hyper-V:System:Realized'
         return [v.ElementName for v in
                 self._conn.Msvm_VirtualSystemSettingData(
                     ['ElementName'],
@@ -109,31 +123,41 @@ class VMUtilsV2(vmutils.VMUtils):
         vs_data.ElementName = vm_name
         vs_data.Notes = notes
         # Don't start automatically on host boot
+        ### self._AUTOMATIC_STARTUP_ACTION_NONE = 2
         vs_data.AutomaticStartupAction = self._AUTOMATIC_STARTUP_ACTION_NONE
 
         # vNUMA and dynamic memory are mutually exclusive
+        ### vNUMA(虚拟非统一内存访问)和dynamic memory(动态内存分配)是互斥的
         if dynamic_memory_ratio > 1:
             vs_data.VirtualNumaEnabled = False
 
+        ### constants.VM_GEN_2 = 2
+        ### self._VIRTUAL_SYSTEM_SUBTYPE_GEN2 = 'Microsoft:Hyper-V:SubType:2'
         if vm_gen == constants.VM_GEN_2:
             vs_data.VirtualSystemSubType = self._VIRTUAL_SYSTEM_SUBTYPE_GEN2
             vs_data.SecureBootEnabled = False
 
         # Created VMs must have their *DataRoot paths in the same location as
         # the instances' path.
+        ### 将VMs的各种根路径(Configuration, Log, Snapshot, Suspend, SwapFile)设置为相同路径
         vs_data.ConfigurationDataRoot = instance_path
         vs_data.LogDataRoot = instance_path
         vs_data.SnapshotDataRoot = instance_path
         vs_data.SuspendDataRoot = instance_path
         vs_data.SwapFileDataRoot = instance_path
 
+        ### vs_man_svc = self._conn.Msvm_VirtualSystemManagementService()[0]
+        ### 创建虚拟机在此处完成
         (job_path,
          vm_path,
          ret_val) = vs_man_svc.DefineSystem(ResourceSettings=[],
                                             ReferenceConfiguration=None,
                                             SystemSettings=vs_data.GetText_(1))
+        ### 检查返回值是否正确，等待任务执行完成
         job = self.check_ret_val(ret_val, job_path)
         if not vm_path and job:
+            ### self._AFFECTED_JOB_ELEMENT_CLASS = "Msvm_AffectedJobElement"
+            ### 调用WMI对象的associators()函数，？？？？
             vm_path = job.associators(self._AFFECTED_JOB_ELEMENT_CLASS)[0]
         return self._get_wmi_obj(vm_path)
 
@@ -162,6 +186,10 @@ class VMUtilsV2(vmutils.VMUtils):
 
         vm = self._lookup_vm_check(vm_name)
 
+        ### constants.DISK = "VHD"
+        ###     self._DISK_DRIVE_RES_SUB_TYPE = 'Microsoft:Hyper-V:Synthetic Disk Drive'
+        ### constants.DVD = "DVD"
+        ###     self._DVD_DRIVE_RES_SUB_TYPE = 'Microsoft:Hyper-V:Synthetic DVD Drive'
         if drive_type == constants.DISK:
             res_sub_type = self._DISK_DRIVE_RES_SUB_TYPE
         elif drive_type == constants.DVD:

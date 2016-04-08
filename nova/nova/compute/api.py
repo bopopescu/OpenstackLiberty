@@ -2013,13 +2013,21 @@ class API(base.Base):
         """Start an instance."""
         LOG.debug("Going to try to start instance", instance=instance)
 
+        ### 1.将虚拟机的任务状态修改为'powering-on'
+        ###   调用虚拟机的save()函数将修改保存至虚拟机，
+        ###     expected_task_state参数会使save函数检查虚拟机的任务状态是否合法
         instance.task_state = task_states.POWERING_ON
         instance.save(expected_task_state=[None])
 
+        ### 2.将start的开始记录到数据库nova的表instance_actions中
+        ###   包括如下内容：
+        ###       'request_id', 'instance_uuid', 'user_id'
+        ###       'project_id', 'action', 'start_time'
         self._record_action_start(context, instance, instance_actions.START)
         # TODO(yamahata): injected_files isn't supported right now.
         #                 It is used only for osapi. not for ec2 api.
         #                 availability_zone isn't used by run_instance.
+        ### 3.调用rpcapi中的start_instance函数，rpc使用cast方式
         self.compute_rpcapi.start_instance(context, instance)
 
     def get(self, context, instance_id, want_objects=False,
@@ -2735,11 +2743,23 @@ class API(base.Base):
         Shuts down an instance and frees it up to be removed from the
         hypervisor.
         """
+        ### 1.将虚拟机任务状态修改为'shelving'
+        ###   调用虚拟机的save()函数将修改保存至虚拟机，
+        ###     expected_task_state参数会使save函数检查虚拟机的任务状态是否合法
         instance.task_state = task_states.SHELVING
         instance.save(expected_task_state=[None])
 
+        ### 2.将'shelve'的开始记录到数据库nova的表instance_actions中
+        ###   包括如下内容：
+        ###       'request_id', 'instance_uuid', 'user_id'
+        ###       'project_id', 'action', 'start_time'
         self._record_action_start(context, instance, instance_actions.SHELVE)
 
+        ### 3.如果虚拟机的主磁盘不是volume：
+        ###     调用_create_image()函数以display_name + 'shelved'为名字创建一个snapshot
+        ###     调用rpcapi的shelve_instance()函数，clean_shutdown=True，image_id为新建快照的ID，方式为cast
+        ###   如果虚拟机的主磁盘是volume：
+        ###     调用rpcapi的shelve_offload_instance()函数，方式为cast
         if not self.is_volume_backed_instance(context, instance):
             name = '%s-shelved' % instance.display_name
             image_meta = self._create_image(context, instance, name,
@@ -3276,6 +3296,10 @@ class API(base.Base):
         return self.db.instance_fault_get_by_instance_uuids(context, uuids)
 
     def _get_root_bdm(self, context, instance, bdms=None):
+        """
+        通过root_bdm()函数获取虚拟机的主磁盘信息
+        bdms未传入时，通过objects来获取它
+        """
         if bdms is None:
             bdms = objects.BlockDeviceMappingList.get_by_instance_uuid(
                     context, instance.uuid)
@@ -3283,6 +3307,11 @@ class API(base.Base):
         return bdms.root_bdm()
 
     def is_volume_backed_instance(self, context, instance, bdms=None):
+        """
+        判断虚拟机主磁盘是否使用了volume:
+            如果能够获取虚拟机的root_bdm信息，就通过is_volume()函数判断，主磁盘为volume则返回True，否则返回False
+            如果不能获取root_bdm信息，就判断虚拟机是否有image_ref，没有则返回True，否则返回False
+        """
         root_bdm = self._get_root_bdm(context, instance, bdms)
         if root_bdm is not None:
             return root_bdm.is_volume

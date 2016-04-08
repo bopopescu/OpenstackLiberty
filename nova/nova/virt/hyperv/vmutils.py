@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright (c) 2010 Cloud.com, Inc
 # Copyright 2012 Cloudbase Solutions Srl / Pedro Navarro Perez
 # All Rights Reserved.
@@ -601,6 +602,7 @@ class VMUtils(object):
         self.check_ret_val(ret_val, job_path)
 
     def check_ret_val(self, ret_val, job_path, success_values=[0]):
+        ### constants.WMI_JOB_STATUS_STARTED = 4096
         if ret_val == constants.WMI_JOB_STATUS_STARTED:
             return self._wait_for_job(job_path)
         elif ret_val not in success_values:
@@ -608,16 +610,28 @@ class VMUtils(object):
                                   % ret_val)
 
     def _wait_for_job(self, job_path):
-        """Poll WMI job state and wait for completion."""
+        """
+            Poll WMI job state and wait for completion.
+            轮询WMI的工作状态并等待它完成
+        """
+        ### 根据job_path产生一个wmi.WMI的对象
         job = self._get_wmi_obj(job_path)
 
+        ### constants.WMI_JOB_STATE_RUNNING = 4
+        ### 根据WMI对象的JobState来判断
         while job.JobState == constants.WMI_JOB_STATE_RUNNING:
             time.sleep(0.1)
+            ### 根据job_path获取最新的WMI对象
             job = self._get_wmi_obj(job_path)
+
+        ### constants.JOB_STATE_KILLED = 9
+        ### job被kill了依然返回这个job_path对应的WMI对象
         if job.JobState == constants.JOB_STATE_KILLED:
             LOG.debug("WMI job killed with status %s.", job.JobState)
             return job
 
+        ### constants.WMI_JOB_STATE_COMPLETED = 7
+        ### 如果此job的状态不为'运行中'、已被杀死或已经完成，说明job运行过程中出错
         if job.JobState != constants.WMI_JOB_STATE_COMPLETED:
             job_state = job.JobState
             if job.path().Class == "Msvm_ConcreteJob":
@@ -645,6 +659,7 @@ class VMUtils(object):
                                             "%d. No error "
                                             "description available") %
                                           job_state)
+        ### 任务成功执行后，记录WMI job的Description和ElapsedTime
         desc = job.Description
         elap = job.ElapsedTime
         LOG.debug("WMI job succeeded: %(desc)s, Elapsed=%(elap)s",
@@ -652,6 +667,7 @@ class VMUtils(object):
         return job
 
     def _get_wmi_obj(self, path):
+        """根据path获取WMI的对象"""
         return wmi.WMI(moniker=path.replace('\\', '/'))
 
     def _add_virt_resource(self, res_setting_data, vm_path):

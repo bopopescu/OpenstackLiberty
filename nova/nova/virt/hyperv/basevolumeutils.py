@@ -1,3 +1,4 @@
+# coding=utf-8
 #
 # Copyright 2012 Pedro Navarro Perez
 # Copyright 2013 Cloudbase Solutions Srl
@@ -25,6 +26,7 @@ import re
 import sys
 
 if sys.platform == 'win32':
+    ### Python的内置模块，用于操作Windows的注册表
     import _winreg
     import wmi
 
@@ -41,6 +43,16 @@ class BaseVolumeUtils(object):
     _FILE_DEVICE_DISK = 7
 
     def __init__(self, host='.'):
+        ### sys.platform返回值如下：
+        ###     Linux (2.x and 3.x)     'linux2'
+        ###     Windows                 'win32'
+        ###     Windows/Cygwin          'cygwin'
+        ###     Mac OS X                'darwin'
+        ###     OS/2                    'os2'
+        ###     OS/2 EMX                'os2emx'
+        ###     RiscOS                  'riscos'
+        ###     AtheOS                  'atheos'
+
         if sys.platform == 'win32':
             self._conn_wmi = wmi.WMI(moniker='//%s/root/wmi' % host)
             self._conn_cimv2 = wmi.WMI(moniker='//%s/root/cimv2' % host)

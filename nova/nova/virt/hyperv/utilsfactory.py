@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2013 Cloudbase Solutions Srl
 # All Rights Reserved.
 #
@@ -53,6 +54,9 @@ utils = hostutils.HostUtils()
 def _get_class(v1_class, v2_class, force_v1_flag):
     # V2 classes are supported starting from Hyper-V Server 2012 and
     # Windows Server 2012 (kernel version 6.2)
+    ### 没有强制使用v1版本的WMI utility classes且内核版本大于等于6.2时，使用v2版本的WMI utility classes
+    ### 此函数被_get_virt_utils_class()调用时，force_v1_flag=CONF.hyperv.force_hyperv_utils_v1，默认为False
+    ### 此函数被get_volumeutils()调用时，force_v1_flag=CONF.hyperv.force_volumeutils_v1, 默认为False
     if not force_v1_flag and utils.check_min_windows_version(6, 2):
         cls = v2_class
     else:
@@ -63,9 +67,12 @@ def _get_class(v1_class, v2_class, force_v1_flag):
 
 
 def _get_virt_utils_class(v1_class, v2_class):
+    """根据配置及内核版本选择合适的WMI utility classes版本"""
     # The "root/virtualization" WMI namespace is no longer supported on
     # Windows Server / Hyper-V Server 2012 R2 / Windows 8.1
     # (kernel version 6.3) or above.
+    ### CONF.hyperv.force_hyperv_utils_v1 默认为False，表示是否强制使用v1的WMI utility classes
+    ### Windows内核版本为6.3及以上时，不再支持使用v1的WMI utility classes
     if (CONF.hyperv.force_hyperv_utils_v1 and
             utils.check_min_windows_version(6, 3)):
         raise vmutils.HyperVException(
