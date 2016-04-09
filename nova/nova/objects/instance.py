@@ -1,3 +1,4 @@
+# coding=utf-8
 #    Copyright 2013 IBM Corp.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -1239,6 +1240,7 @@ class _BaseInstanceList(base.ObjectListBase, base.NovaObject):
         """Batch query the database for our instances' faults.
 
         :returns: A list of instance uuids for which faults were found.
+            将数据库中虚拟机对应的最新的一条错误记录放入到instance.fault中
         """
         uuids = [inst.uuid for inst in self]
         faults = objects.InstanceFaultList.get_by_instance_uuids(

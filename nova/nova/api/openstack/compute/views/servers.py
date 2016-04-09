@@ -85,7 +85,7 @@ class ViewBuilder(common.ViewBuilder):
             },
         }
 
-    def get_show_expected_attrs(self, expected_attrs=None):
+    def     get_show_expected_attrs(self, expected_attrs=None):
         """Returns a list of lazy-loadable expected attributes used by show
 
         This should be used when getting the instances from the database so
@@ -103,6 +103,7 @@ class ViewBuilder(common.ViewBuilder):
             expected_attrs = []
         # NOTE(mriedem): We sort the list so we can have predictable test
         # results.
+        ### self._show_expected_attrs = ['flavor', 'info_cache', 'metadata']
         return sorted(list(set(self._show_expected_attrs + expected_attrs)))
 
     def show(self, request, instance):

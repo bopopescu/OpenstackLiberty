@@ -275,9 +275,11 @@ class ServersController(wsgi.Controller):
     @extensions.expected_errors((400, 403))
     def detail(self, req):
         """Returns a list of server details for a given user."""
+        ### 1.从req中获取context，并验证是否有'detail'的权限
         context = req.environ['nova.context']
         authorize(context, action="detail")
         try:
+            ### 2.调用_get_servers()函数，is_detail直接指定为True
             servers = self._get_servers(req, is_detail=True)
         except exception.Invalid as err:
             raise exc.HTTPBadRequest(explanation=err.format_message())
@@ -286,17 +288,30 @@ class ServersController(wsgi.Controller):
     def _get_servers(self, req, is_detail):
         """Returns a list of servers, based on any search options specified."""
 
+        ### 1.从req中获取传入的search_opts和context
         search_opts = {}
         search_opts.update(req.GET)
 
         context = req.environ['nova.context']
+
+        ### 2.移除非法的查询参数
+        ###     如果调用者是admin，则仅移除'sort_key', 'sort_dir', 'limit', 'marker'这四个值
+        ###     否则仅允许有如下查询参数，其余查询参数均会被舍弃
+        ###         ('reservation_id', 'name', 'status', 'image', 'flavor',
+        ###         'ip', 'changes-since', 'all_tenants')(如果API的版本不低于2.4，则还允许'ip6')
         remove_invalid_options(context, search_opts,
                 self._get_server_search_options(req))
 
         # Verify search by 'status' contains a valid status.
         # Convert it to filter by vm_state or task_state for compute_api.
+        ### 3.如果search_opts中存在key'status'，用具体的'vm_state'和'task_state'代替它，步骤如下：
+        ###     从search_opts中移除'status'，第二个参数'None'是防止search_opts中没有'status'这个key
+        ###     从req中直接获取具体的'status'的值，根据'status'和'vm_state'+'task_state'的对应关系，获取传入的'status'值对应的
+        ###         具体的'vm_state'和'task_state'，如果req中有'status'这个key，但是获取的'vm_state','task_state'同时为空，
+        ###         直接返回[]，否则将'vm_state'和'task_state'(如果有需要)加入到search_opts中
         search_opts.pop('status', None)
         if 'status' in req.GET.keys():
+            ### 通过url传过来的值中可能有多个"status='xxx'"，将它们全部取出
             statuses = req.GET.getall('status')
             states = common.task_and_vm_state_from_status(statuses)
             vm_state, task_state = states
@@ -308,6 +323,7 @@ class ServersController(wsgi.Controller):
             if 'default' not in task_state:
                 search_opts['task_state'] = task_state
 
+        ### 4.将search_opts中可能存在的'changes-since'的值规范化，使之与数据库中的时间格式一致
         if 'changes-since' in search_opts:
             try:
                 parsed = timeutils.parse_isotime(search_opts['changes-since'])
@@ -322,6 +338,9 @@ class ServersController(wsgi.Controller):
         # ... Unless 'changes-since' is specified, because 'changes-since'
         # should return recently deleted images according to the API spec.
 
+        ### 5.当'deleted'不存在于search_opts中，如果'changes-since'也不在search_opts中，
+        ###     则search_opts['deleted']默认为False
+        ###   如果'deleted'存在于search_opts中，则确保search_opts['deleted']值为bool类型，默认为False
         if 'deleted' not in search_opts:
             if 'changes-since' not in search_opts:
                 # No 'changes-since', so we only want non-deleted servers
@@ -333,6 +352,9 @@ class ServersController(wsgi.Controller):
             search_opts['deleted'] = strutils.bool_from_string(
                 search_opts['deleted'], default=False)
 
+        ### 6.当只想查询处于'deleted'状态的虚拟机时，判断是否为admin用户在操作，
+        ###   如果是，则将search_opts['deleted']设置为True，如果不是，则拒绝此次查询
+        ###   只有admin用户可以查询已被删除的虚拟机
         if search_opts.get("vm_state") == ['deleted']:
             if context.is_admin:
                 search_opts['deleted'] = True
@@ -346,7 +368,7 @@ class ServersController(wsgi.Controller):
         # by remove_invalid_options above unless the requestor is an
         # admin.
 
-        # TODO(gmann): 'all_tenants' flag should not be required while
+            # TODO(gmann): 'all_tenants' flag should not be required while
         # searching with 'tenant_id'. Ref bug# 1185290
         # +microversions to achieve above mentioned behavior by
         # uncommenting below code.
@@ -361,12 +383,17 @@ class ServersController(wsgi.Controller):
             # if context.project_id != search_opts.get('tenant_id'):
             #    search_opts['all_tenants'] = 1
 
+        ### 7.确保all_tenants的值为bool值，当'all_tenants'的值为空字符串
+        ###   因为'all_tenants'的值已被取出，从search_opts中移除它的值
         all_tenants = common.is_all_tenants(search_opts)
         # use the boolean from here on out so remove the entry from search_opts
         # if it's present
         search_opts.pop('all_tenants', None)
 
         elevated = None
+        ### 8.'all_tenants'为True时，验证是否有获取所有租户的虚拟机信息的权限
+        ###     context.elevated()将权限直接提升至'admin'
+        ###   'all_tenants'为False时，将'project_id'和'user_id'放入到search_opts中
         if all_tenants:
             if is_detail:
                 authorize(context, action="detail:get_all_tenants")
@@ -379,9 +406,13 @@ class ServersController(wsgi.Controller):
             else:
                 search_opts['user_id'] = context.user_id
 
+        ### 9.从req中获取limit，maker，sort_keys，sort_dirs的值
+        ###   limit最大默认为1000，sort_keys默认为'created_at', sort_dirs默认为'desc'
         limit, marker = common.get_limit_and_marker(req)
         sort_keys, sort_dirs = common.get_sort_params(req.params)
 
+        ### 10.将此处的expected_attrs与ViewBuilder中的_show_expected_attrs合并
+        ###    处理后的expected_attrs的值为['flavor', 'info_cache', 'metadata', 'pci_devices'](已经过排序)
         expected_attrs = ['pci_devices']
         if is_detail:
             # merge our expected attrs with what the view builder needs for
@@ -389,6 +420,7 @@ class ServersController(wsgi.Controller):
             expected_attrs = self._view_builder.get_show_expected_attrs(
                                                                 expected_attrs)
 
+        ### 11.调用compute_api中的get_all()函数来获取虚拟机的信息
         try:
             instance_list = self.compute_api.get_all(elevated or context,
                     search_opts=search_opts, limit=limit, marker=marker,
@@ -402,11 +434,15 @@ class ServersController(wsgi.Controller):
                       search_opts['flavor'])
             instance_list = objects.InstanceList()
 
+        ### 12.通过_view_builder构建返回值
         if is_detail:
+            ### 将instance_list中每个虚拟机对应的最新的一条错误记录放入到instance.fault中
             instance_list.fill_faults()
             response = self._view_builder.detail(req, instance_list)
         else:
             response = self._view_builder.index(req, instance_list)
+
+        ### 缓存虚拟机信息
         req.cache_db_instances(instance_list)
         return response
 

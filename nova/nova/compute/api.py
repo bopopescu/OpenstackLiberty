@@ -2081,6 +2081,7 @@ class API(base.Base):
         """
 
         # TODO(bcwaldon): determine the best argument for target here
+        ### 1.权限检查
         target = {
             'project_id': context.project_id,
             'user_id': context.user_id,
@@ -2123,6 +2124,8 @@ class API(base.Base):
                 'system_metadata': _remap_system_metadata_filter}
 
         # copy from search_opts, doing various remappings as necessary
+        ### 2.将search_opts中的键转化为filters中对应的键后存入filters中，
+        ###   如果search_opts的键不存在于filter_mapping中，则保持不变存入filters中
         for opt, value in six.iteritems(search_opts):
             # Do remappings.
             # Values not in the filter_mapping table are copied as-is.
@@ -2148,23 +2151,28 @@ class API(base.Base):
 
         # IP address filtering cannot be applied at the DB layer, remove any DB
         # limit so that it can be applied after the IP filter.
+        ### 3.nova数据库中不支持查询IP，所以先将limit去掉，在后面查询IP地址时再使用limit
         filter_ip = 'ip6' in filters or 'ip' in filters
         orig_limit = limit
         if filter_ip and limit:
             LOG.debug('Removing limit for DB query due to IP filter')
             limit = None
 
+        ### 4.通过objects来获取虚拟机列表
         inst_models = self._get_instances_by_filters(context, filters,
                 limit=limit, marker=marker, expected_attrs=expected_attrs,
                 sort_keys=sort_keys, sort_dirs=sort_dirs)
 
+        ### 5.如果需要根据IP查询，此时再对之前的查询结果通过IP和limit进行过滤
         if filter_ip:
             inst_models = self._ip_filter(inst_models, filters, orig_limit)
 
+        ### 6.如果要求结果为object，则直接返回
         if want_objects:
             return inst_models
 
         # Convert the models to dictionaries
+        ### 7.将objects.InstanceList转化为字典的列表后返回
         instances = []
         for inst_model in inst_models:
             instances.append(obj_base.obj_to_primitive(inst_model))
@@ -2173,6 +2181,7 @@ class API(base.Base):
 
     @staticmethod
     def _ip_filter(inst_models, filters, limit):
+        ### 获取虚拟机的网卡信息，选择IP地址与查询条件相等的虚拟机后返回
         ipv4_f = re.compile(str(filters.get('ip')))
         ipv6_f = re.compile(str(filters.get('ip6')))
 
@@ -2204,6 +2213,8 @@ class API(base.Base):
                   'security_groups']
         if expected_attrs:
             fields.extend(expected_attrs)
+
+        ### 1.通过objects来获取虚拟机列表
         return objects.InstanceList.get_by_filters(
             context, filters=filters, limit=limit, marker=marker,
             expected_attrs=fields, sort_keys=sort_keys, sort_dirs=sort_dirs)

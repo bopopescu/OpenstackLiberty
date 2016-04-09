@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -261,7 +262,11 @@ def limited(items, request, max_limit=CONF.osapi_max_limit):
 
 
 def get_limit_and_marker(request, max_limit=CONF.osapi_max_limit):
-    """get limited parameter from request."""
+    """
+        get limited parameter from request.
+        从request中获取limit和marker的值
+        limit最大值默认为1000
+    """
     params = get_pagination_params(request)
     limit = params.get('limit', max_limit)
     limit = min(max_limit, limit)
@@ -552,11 +557,13 @@ def is_all_tenants(search_opts):
     :returns: boolean indicating if all_tenants are being requested or not
     """
     all_tenants = search_opts.get('all_tenants')
+    ### 确保'all_tenants'的值为Bool值
     if all_tenants:
         try:
             all_tenants = strutils.bool_from_string(all_tenants, True)
         except ValueError as err:
             raise exception.InvalidInput(six.text_type(err))
+    ### 当'all_tenants'的值为空字符串时默认为True
     else:
         # The empty string is considered enabling all_tenants
         all_tenants = 'all_tenants' in search_opts
