@@ -468,6 +468,7 @@ class ServersController(wsgi.Controller):
     def _check_string_length(self, value, name, max_length=None):
         try:
             if isinstance(value, six.string_types):
+                ### 去掉value中的空白字符
                 value = value.strip()
             utils.check_string_length(value, name, min_length=1,
                                       max_length=max_length)
