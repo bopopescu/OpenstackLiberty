@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2011 OpenStack Foundation
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
@@ -195,6 +196,11 @@ class RequestContext(context.RequestContext):
 
     def elevated(self, read_deleted=None):
         """Return a version of this context with admin flag set."""
+        ### 将一个context强制提升至admin权限，操作如下：
+        ###     拷贝出一个新的context
+        ###     将新context的is_admin设置为True
+        ###     将'admin'加入到新context.roles中
+        ###     如果传入了read_deleted，则赋值给新context.read_deleted
         context = copy.deepcopy(self)
         context.is_admin = True
 

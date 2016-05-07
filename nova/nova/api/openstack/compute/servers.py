@@ -810,24 +810,115 @@ class ServersController(wsgi.Controller):
     def update(self, req, id, body):
         """Update server then pass on to version-specific controller."""
 
+        ### 从req中获取context，并验证用户是否有update的权限
         ctxt = req.environ['nova.context']
         update_dict = {}
         authorize(ctxt, action='update')
 
+        ### 如果需要修改虚拟机的名称
+        ###     将'name'对应为'display_name'
+        ###     将传入的名称规范化（去掉名称开头和结尾的空白字符）
         if 'name' in body['server']:
             update_dict['display_name'] = common.normalize_name(
                 body['server']['name'])
 
+        ### self.update_extension_manager:
+        ###     <stevedore.enabled.EnabledExtensionManager object at 0x5b40750>
+        ### EnabledExtensionManager.__dict__:
+        ###     {
+        ###         'check_func': <function check_load_extension at 0x60e9668>,
+        ###         'namespace': 'nova.api.v21.extensions.server.update',
+        ###         '_on_load_failure_callback': None,
+        ###         'extensions': [
+        ###             <stevedore.extension.Extension object at 0x68e2a10>,
+        ###             <stevedore.extension.Extension object at 0x68e2a90>
+        ###         ],
+        ###         'propagate_map_exceptions': True,
+        ###         '_extensions_by_name': None
+        ###     }
+        ### 上面的两个extension的值如下：
+        ###     {
+        ###         'obj': <Extension: name=DiskConfig, alias=os-disk-config, version=1>,
+        ###         'entry_point': EntryPoint.parse('disk_config = nova.api.openstack.compute.disk_config:DiskConfig'),
+        ###         'name': 'disk_config',
+        ###         'plugin': <class 'nova.api.openstack.compute.disk_config.DiskConfig'>
+        ###     }
+        ###     {
+        ###         'obj': <Extension: name=AccessIPs, alias=os-access-ips, version=1>,
+        ###         'entry_point': EntryPoint.parse('access_ips = nova.api.openstack.compute.access_ips:AccessIPs'),
+        ###         'name': 'access_ips',
+        ###         'plugin': <class 'nova.api.openstack.compute.access_ips.AccessIPs'>
+        ###     }
         if list(self.update_extension_manager):
+            ### def map(self, func, *args, **kwds):
+            ###     if not self.extensions
+            ###         raise NoMatches('No %s extensions found' % self.namespace)
+            ###     response = []
+            ###     for e in self.extensions:
+            ###         ### def _invoke_one_plugin(self, response_callback, func, e, args, kwds):
+            ###         ###     try:
+            ###         ###         response_callback(func(e, *args, **kwds))
+            ###         ###     except Exception as err:
+            ###         ###         if self.propagate_map_exceptions:
+            ###         ###             raise
+            ###         ###         else:
+            ###         ###             LOG.error('error calling %r: %s', e.name, err)
+            ###         ###             LOG.exception(err)
+            ###         self._invoke_one_plugin(response.append, func, e, args, kwds)
+            ###     return response
+            ### def _update_extension_point(self, ext, update_dict, update_kwargs):
+            ###     handler = ext.obj
+            ###     LOG.debug("Running _update_extension_point for %s", ext.obj)
+            ###     handler.server_update(update_dict, update_kwargs)
+
+            ### 对于disk_config:
+            ###     def server_create(self, server_dict, create_kwargs,
+            ###                       body_deprecated_param=None):
+            ###         ### API_DISK_CONFIG = "OS-DCF:diskConfig"
+            ###         if API_DISK_CONFIG in server_dict:
+            ###             api_value = server_dict[API_DISK_CONFIG]
+            ###             ### def disk_config_from_api(value):
+            ###             ###     if value == 'AUTO':
+            ###             ###         return True
+            ###             ###     elif value == 'MANUAL':
+            ###             ###         return False
+            ###             ###     else:
+            ###             ###         msg = _("%s must be either 'MANUAL' or 'AUTO'.") % API_DISK_CONFIG
+            ###             ###        raise exc.HTTPBadRequest(explanation=msg)
+            ###             internal_value = disk_config_from_api(api_value)
+            ###             ### INTERNAL_DISK_CONFIG = "auto_disk_config"
+            ###             create_kwargs[INTERNAL_DISK_CONFIG] = internal_value
+
+            ###    server_update = server_create
+
+            ### 对于access_ips:
+            ###     def server_create(self, server_dict, create_kwargs,
+            ###                       body_deprecated_param=None):
+            ###         if AccessIPs.v4_key in server_dict:
+            ###             access_ip_v4 = server_dict.get(AccessIPs.v4_key)
+            ###             if access_ip_v4:
+            ###                 create_kwargs['access_ip_v4'] = access_ip_v4
+            ###             else:
+            ###                 create_kwargs['access_ip_v4'] = None
+            ###         if AccessIPs.v6_key in server_dict:
+            ###             access_ip_v6 = server_dict.get(AccessIPs.v6_key)
+            ###             if access_ip_v6:
+            ###                 create_kwargs['access_ip_v6'] = access_ip_v6
+            ###             else:
+            ###                 create_kwargs['access_ip_v6'] = None
+
+            ###     server_update = server_create
             self.update_extension_manager.map(self._update_extension_point,
                                               body['server'], update_dict)
 
+        ### 通过传入的ID获取虚拟机，将需要修改的信息更新到虚拟机中，保存虚拟机
         instance = self._get_server(ctxt, req, id, is_detail=True)
         try:
             # NOTE(mikal): this try block needs to stay because save() still
             # might throw an exception.
             instance.update(update_dict)
             instance.save()
+            ### 通过_view_builder构造虚拟机的信息，并返回
             return self._view_builder.show(req, instance,
                                            extend_address=False)
         except exception.InstanceNotFound:

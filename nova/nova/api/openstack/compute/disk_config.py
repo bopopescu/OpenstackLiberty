@@ -137,9 +137,19 @@ class DiskConfig(extensions.V21APIExtensionBase):
     # server_update & server_rebuild
     def server_create(self, server_dict, create_kwargs,
                       body_deprecated_param=None):
+        ### API_DISK_CONFIG = "OS-DCF:diskConfig"
         if API_DISK_CONFIG in server_dict:
             api_value = server_dict[API_DISK_CONFIG]
+            ### def disk_config_from_api(value):
+            ###     if value == 'AUTO':
+            ###         return True
+            ###     elif value == 'MANUAL':
+            ###         return False
+            ###     else:
+            ###         msg = _("%s must be either 'MANUAL' or 'AUTO'.") % API_DISK_CONFIG
+            ###        raise exc.HTTPBadRequest(explanation=msg)
             internal_value = disk_config_from_api(api_value)
+            ### INTERNAL_DISK_CONFIG = "auto_disk_config"
             create_kwargs[INTERNAL_DISK_CONFIG] = internal_value
 
     server_update = server_create

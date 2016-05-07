@@ -132,6 +132,7 @@ class FaultWrapper(base_wsgi.Middleware):
     @webob.dec.wsgify(RequestClass=wsgi.Request)
     def __call__(self, req):
         try:
+            ### self.application: <oslo_middleware.sizelimit.RequestBodySizeLimiter object at 0x6ac9dd0>
             return req.get_response(self.application)
         except Exception as ex:
             return self._error(ex, req)
