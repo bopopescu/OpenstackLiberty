@@ -793,6 +793,10 @@ class ServersController(wsgi.Controller):
     def _delete(self, context, req, instance_uuid):
         authorize(context, action='delete')
         instance = self._get_server(context, req, instance_uuid)
+        ### CONF.reclaim_instance_interval:
+        ### Interval in seconds for reclaiming deleted instances
+        ### (integer value)
+        ### 该值为0，则立刻删除。不为0，则为软删除。
         if CONF.reclaim_instance_interval:
             try:
                 self.compute_api.soft_delete(context, instance)
