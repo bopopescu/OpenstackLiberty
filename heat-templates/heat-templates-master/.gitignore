@@ -1,0 +1,7 @@
+*.pyc
+*.swp
+*~
+.tox
+cfn/cloudformation-examples/
+private
+.testrepository
