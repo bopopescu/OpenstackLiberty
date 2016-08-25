@@ -1,3 +1,4 @@
+# coding=utf-8
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -341,7 +342,12 @@ class EngineService(service.Service):
             self.stack_watch.start_watch_task(s.id, admin_context)
 
     def start(self):
+        ### 1.随机产生一个UUID
         self.engine_id = stack_lock.StackLock.generate_engine_id()
+
+        ### 2.产生一个ThreadGroupManager的对象
+        ###   产生一个EngineListener的对象，并启动监听
+        ###   (如果配置了convergence_engine为True)产生一个WorkerService的对象并启动
         self.thread_group_mgr = ThreadGroupManager()
         self.listener = EngineListener(self.host, self.engine_id,
                                        self.thread_group_mgr)
@@ -357,6 +363,9 @@ class EngineService(service.Service):
             )
             self.worker_service.start()
 
+        ### 3.产生RPC的Target对象，
+        ###   使用此Target创建一个RPCServer并启动
+        ###   获取一个RPC的Client
         target = messaging.Target(
             version=self.RPC_API_VERSION, server=self.host,
             topic=self.topic)
@@ -376,7 +385,9 @@ class EngineService(service.Service):
         super(EngineService, self).start()
 
     def _stop_rpc_server(self):
-        # Stop rpc connection at first for preventing new requests
+        """
+        最先停止RPC连接，防止有新的请求到来
+        """
         LOG.debug("Attempting to stop engine service...")
         try:
             self._rpc_server.stop()
@@ -386,29 +397,36 @@ class EngineService(service.Service):
             LOG.error(_LE("Failed to stop engine service, %s"), e)
 
     def stop(self):
+        ### 1.最先停止RPC连接，防止有新的请求到来
         self._stop_rpc_server()
 
+        ### 2.如果engine是convergence类型，停止它的worker_service
         if cfg.CONF.convergence_engine:
             # Stop the WorkerService
             self.worker_service.stop()
 
-        # Wait for all active threads to be finished
+        ### 3.等待所有活动的线程结束
         for stack_id in list(self.thread_group_mgr.groups.keys()):
-            # Ignore dummy service task
+            ### 忽略虚拟的服务任务
+            ### periodic_interval：default=60, Seconds between running periodic tasks.
             if stack_id == cfg.CONF.periodic_interval:
                 continue
             LOG.info(_LI("Waiting stack %s processing to be finished"),
                      stack_id)
-            # Stop threads gracefully
+            ### 优雅的结束线程
             self.thread_group_mgr.stop(stack_id, True)
             LOG.info(_LI("Stack %s processing was finished"), stack_id)
 
+        ### 4.停止ThreadGroupManager
         self.manage_thread_grp.stop()
+
+        ### 5.获取一个admin权限的context
+        ###   删除这个service
         ctxt = context.get_admin_context()
         service_objects.Service.delete(ctxt, self.service_id)
         LOG.info(_LI('Service %s is deleted'), self.service_id)
 
-        # Terminate the engine process
+        ### 6.停止engine进程
         LOG.info(_LI("All threads were gone, terminating engine"))
         super(EngineService, self).stop()
 
@@ -419,6 +437,11 @@ class EngineService(service.Service):
     @context.request_context
     def identify_stack(self, cnxt, stack_name):
         """The full stack identifier for a single, live stack with stack_name.
+        通过stack的name或者uuid获取stack的identifier
+        具体过程如下：
+            1.通过name或者uuid获取objects.stack.Stack的对象
+            2.通过objects.stack.Stack的对象构造一个engine.stack.Stack的对象
+            3.以字典形式返回stack的identifier
 
         :param cnxt: RPC context.
         :param stack_name: Name or UUID of the stack to look up.
@@ -441,6 +464,14 @@ class EngineService(service.Service):
             raise exception.StackNotFound(stack_name=stack_name)
 
     def _get_stack(self, cnxt, stack_identity, show_deleted=False):
+        """
+        通过stack_identity获取objects.stack.Stack的对象并返回
+        异常处理：
+            exception.StackNotFound     未能获得Stack对象
+                                        or identity有path属性
+                                        or 获取到的stack的name不等于identity的stack_name
+            exception.InvalidTenant     context的tenant_id不等于identity.tenant或者s.stack_user_project_id
+        """
         identity = identifier.HeatIdentifier(**stack_identity)
 
         s = stack_object.Stack.get_by_id(
@@ -465,6 +496,11 @@ class EngineService(service.Service):
     @context.request_context
     def show_stack(self, cnxt, stack_identity):
         """Return detailed information about one or all stacks.
+        返回一个或所有stack的详细信息
+        具体过程如下：
+            1.如果传入了stack的标识，则通过这个标识获取一个objects.stack.Stack的对象
+            2.将之前获得的一个或所有的objects.stack.Stack对象转化为engine.stack.Stack的对象
+            3.调用api中的函数将stack格式化后返回
 
         :param cnxt: RPC context.
         :param stack_identity: Name of the stack you want to show, or None
@@ -479,6 +515,9 @@ class EngineService(service.Service):
         return [api.format_stack(stack) for stack in stacks]
 
     def get_revision(self, cnxt):
+        """
+        获取配置文件中heat_revision的值
+        """
         return cfg.CONF.revision['heat_revision']
 
     @context.request_context
@@ -512,6 +551,12 @@ class EngineService(service.Service):
         :param not_tags_any: show stacks not containing these tags, combine
             multiple tags using the boolean OR expression
         :returns: a list of formatted stacks
+
+        返回stack的列表
+        具体操作如下：
+            1.调用api中的函数格式化传入的过滤条件
+            2.根据过滤条件获取engine.stack.Stack的对象
+            3.调用api中的函数，格式化stack的信息后并返回
         """
         if filters is not None:
             filters = api.translate_filters(filters)
@@ -548,6 +593,8 @@ class EngineService(service.Service):
         :param not_tags_any: count stacks not containing these tags, combine
             multiple tags using the boolean OR expression
         :returns: a integer representing the number of matched stacks
+
+        返回符合所传入过滤条件的stack的数量
         """
         return stack_object.Stack.count_all(
             cnxt,
@@ -562,6 +609,13 @@ class EngineService(service.Service):
             not_tags_any=not_tags_any)
 
     def _validate_deferred_auth_context(self, cnxt, stack):
+        """
+        验证是否需要传入认证信息
+        具体过程如下：
+            1.如果deferred_auth_method不是'password'，则通过
+            2.如果stack没有资源需要认证信息，则通过
+            3.如果context缺少username或password，则报错exception.MissingCredentialError
+        """
         if cfg.CONF.deferred_auth_method != 'password':
             return
 
@@ -574,17 +628,22 @@ class EngineService(service.Service):
             raise exception.MissingCredentialError(required='X-Auth-Key')
 
     def _validate_new_stack(self, cnxt, stack_name, parsed_template):
+        ### 1.判断stack的name是否已被占用
         if stack_object.Stack.get_by_name(cnxt, stack_name):
             raise exception.StackExists(stack_name=stack_name)
 
+        ### 2.判断租户下的stack的数量是否会超过限制，限制默认是100
         tenant_limit = cfg.CONF.max_stacks_per_tenant
         if stack_object.Stack.count_all(cnxt) >= tenant_limit:
             message = _("You have reached the maximum stacks per tenant, "
                         "%d. Please delete some stacks.") % tenant_limit
             raise exception.RequestLimitExceeded(message=message)
+
+        ### 3.检测传入的模板是否合法
         self._validate_template(cnxt, parsed_template)
 
     def _validate_template(self, cnxt, parsed_template):
+        ### 1.验证模板是否合法
         try:
             parsed_template.validate()
         except AssertionError:
@@ -592,6 +651,7 @@ class EngineService(service.Service):
         except Exception as ex:
             raise exception.StackValidationFailed(message=six.text_type(ex))
 
+        ### 2.检测stack的resources数量是否超过了限制，限制默认为1000
         max_resources = cfg.CONF.max_resources_per_stack
         if max_resources == -1:
             return
@@ -606,24 +666,38 @@ class EngineService(service.Service):
                                            stack_user_project_id=None,
                                            convergence=False,
                                            parent_resource_name=None):
+        ### 1.调用api的接口，格式化传入的参数
         common_params = api.extract_args(args)
 
+        ### 2.如果'adopt_stack_data'在common_params中
         # If it is stack-adopt, use parameters from adopt_stack_data
         if rpc_api.PARAM_ADOPT_STACK_DATA in common_params:
             if not cfg.CONF.enable_stack_adopt:
                 raise exception.NotSupported(feature='Stack Adopt')
 
             # Override the params with values given with -P option
+            ### new_params = common_params['adopt_stack_data']['environment']['parameters'].copy()
+            ### new_params.update(params.get('parameters', {}))
+            ### params[rpc_api.parameters] = new_params
             new_params = common_params[rpc_api.PARAM_ADOPT_STACK_DATA][
                 'environment'][rpc_api.STACK_PARAMETERS].copy()
             new_params.update(params.get(rpc_api.STACK_PARAMETERS, {}))
             params[rpc_api.STACK_PARAMETERS] = new_params
 
+        ### 3.使用params构造Environment对象
         env = environment.Environment(params)
 
+        ### 4.使用传入的模板信息构造Template对象
         tmpl = templatem.Template(template, files=files, env=env)
+
+        ### 5.检测能否根据这个模板和名称创建这个stack
+        ###     判断stack的name是否已被占用
+        ###     判断租户下的stack的数量是否会超过限制，限制默认是100
+        ###     检测传入的模板是否合法
+        ###     检测stack的resources数量是否超过了限制，限制默认为1000
         self._validate_new_stack(cnxt, stack_name, tmpl)
 
+        ### 6.根据传入的参数构造一个engine.stack.Stack的对象
         stack = parser.Stack(cnxt, stack_name, tmpl,
                              owner_id=owner_id,
                              nested_depth=nested_depth,
@@ -633,7 +707,13 @@ class EngineService(service.Service):
                              parent_resource=parent_resource_name,
                              **common_params)
 
+        ### 7.验证是否需要传入认证信息
+        ###     如果deferred_auth_method不是'password'，则通过
+        ###     如果stack没有资源需要认证信息，则通过
+        ###     如果context缺少username或password，则报错exception.MissingCredentialError
         self._validate_deferred_auth_context(cnxt, stack)
+
+        ### 8.各种验证
         stack.validate()
         # For the root stack print a summary of the TemplateResources loaded
         if nested_depth == 0:

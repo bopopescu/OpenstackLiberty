@@ -641,6 +641,7 @@ class Stack(collections.Mapping):
         # TODO(sdake) Should return line number of invalid reference
 
         # validate overall template (top-level structure)
+        ###
         self.t.validate()
 
         # Validate parameters
