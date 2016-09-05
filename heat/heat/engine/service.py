@@ -1137,6 +1137,8 @@ class EngineService(service.Service):
     @context.request_context
     def get_template(self, cnxt, stack_identity):
         """Get the template.
+        获取stack的模板
+        stack不存在时返回None
 
         :param cnxt: RPC context.
         :param stack_identity: Name of the stack you want to see.

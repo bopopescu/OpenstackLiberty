@@ -123,6 +123,14 @@ class InjectContext(wsgi.Middleware):
 class NovaKeystoneContext(wsgi.Middleware):
     """Make a request context from keystone headers."""
 
+    ### class Request(webob.Request):
+    ###     def __init__(self, environ, *args, **kwargs):
+    ###         if CONF.secure_proxy_ssl_header:
+    ###             scheme = environ.get(CONF.secure_proxy_ssl_header)
+    ###         if scheme:
+    ###            environ['wsgi.url_scheme'] = scheme
+    ###    super(Request, self).__init__(environ, *args, **kwargs)
+
     @webob.dec.wsgify(RequestClass=wsgi.Request)
     def __call__(self, req):
         user_id = req.headers.get('X_USER')

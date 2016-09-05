@@ -848,6 +848,13 @@ class Stack(collections.Mapping):
         :param pre_completion_func function that need to be executed right
         before action completion. Uses stack ,action, status and reason as
         input parameters
+
+        creator = scheduler.TaskRunner(
+            self.stack_task, action=self.CREATE,
+            reverse=False, post_func=rollback,
+            error_wait_time=cfg.CONF.error_wait_time)
+        creator(timeout=self.timeout_secs())
+
         """
         try:
             lifecycle_plugin_utils.do_pre_ops(self.context, self,
