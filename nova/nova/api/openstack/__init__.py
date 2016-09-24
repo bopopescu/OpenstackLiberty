@@ -206,6 +206,15 @@ class ProjectMapper(APIMapper):
             p_member = parent_resource['member_name']
             kwargs['path_prefix'] = '{project_id}/%s/:%s_id' % (p_collection,
                                                                 p_member)
+        # member_name: server
+        # collection_name: servers
+        # kwargs:
+        #     {
+        #         'member': {'action': 'POST'},
+        #         'controller': <nova.api.openstack.wsgi.ResourceV21 object at 0x82b4610>,
+        #         'collection': {'detail': 'GET'},
+        #         'path_prefix': '{project_id:[0-9a-f\\-]+}/'
+        #     }
         routes.Mapper.resource(self, member_name,
                                      collection_name,
                                      **kwargs)
@@ -321,6 +330,29 @@ class APIRouterV21(base_wsgi.Router):
         return 'nova.api.v21.extensions'
 
     def __init__(self, init_only=None, v3mode=False):
+        """
+        1.检查配置文件中是否启用了APIv2.1(osapi_v21.enabled, 默认为True, 此参数即将被舍弃)
+        2.检查配置文件中是否配置了extensions_blacklist或extensions_whitelist,
+            如果配置了,警告说在M版本中必须运行API的全部extensions
+        3.获取配置文件中extensions_whitelist和extensions_blacklist的交集,
+            如果交集中有元素,则警告Extensions同时存在于blacklist和whitelist中
+        4.构造一个stevedore.enabled.EnabledExtensionManager的对象,
+            构造参数如下:
+                namespace='nova.api.v21.extensions',
+                check_func=_check_load_extension,
+                invoke_on_load=True,
+                invoke_kwds={"extension_info": self.loaded_extension_info}
+                    (self.loaded_extension_info = extension_info.LoadedExtensionInfo())
+        5.检查传入的v3mode参数,v3mode为True时, mapper = PlainMapper(), 否则mapper = ProjectMapper()
+        6.检查self.api_extension_manager的extensions是否非空
+            如果非空, 执行如下操作:
+                self._register_resources_check_inherits(mapper)
+                    遍历self.api_extension_manager中所有的extension
+                    遍历每个extension中的所有的resource
+                    根据extension中是否存在inherits属性的值不为空的resource,
+                        将extensions分成两组, 分别调用_register_resources_list函数
+                            即对于每个extension执行_register_resources(ext, mapper)操作
+        """
         def _check_load_extension(ext):
             if (self.init_only is None or ext.obj.alias in
                 self.init_only) and isinstance(ext.obj,
@@ -386,12 +418,17 @@ class APIRouterV21(base_wsgi.Router):
 
         self.resources = {}
 
+        ### list(self.api_extension_manager) 是依靠类的__iter__函数, 等于list(self.extensions)
         ### self.api_extension_manager: <stevedore.enabled.EnabledExtensionManager object at 0x57a51d0>
         ### mapper: <nova.api.openstack.ProjectMapper object at 0x57a5210>
         if list(self.api_extension_manager):
             self._register_resources_check_inherits(mapper)
             self.api_extension_manager.map(self._register_controllers)
 
+        ### 检查是否缺少了核心的extension
+        ### 操作如下：
+        ###     使用定义的核心extensions减去已定义的extensions
+        ###     如果得到的结果不为空list，则说明有核心extension缺失了
         missing_core_extensions = self.get_missing_core_extensions(
             self.loaded_extension_info.get_extensions().keys())
         if not self.init_only and missing_core_extensions:
@@ -400,6 +437,32 @@ class APIRouterV21(base_wsgi.Router):
             raise exception.CoreAPIMissing(
                 missing_apis=missing_core_extensions)
 
+        ### Loaded extensions:
+        ###     [
+        ###         'extensions', 'flavors', 'image-metadata', 'image-size',
+        ###         'images', 'ips', 'limits', 'os-access-ips', 'os-admin-actions',
+        ###         'os-admin-password', 'os-agents', 'os-aggregates', 'os-assisted-volume-snapshots',
+        ###         'os-attach-interfaces', 'os-availability-zone', 'os-baremetal-nodes',
+        ###         'os-block-device-mapping', 'os-cells', 'os-certificates', 'os-cloudpipe',
+        ###         'os-config-drive', 'os-console-auth-tokens', 'os-console-output',
+        ###         'os-consoles', 'os-create-backup', 'os-deferred-delete', 'os-disk-config',
+        ###         'os-evacuate', 'os-extended-availability-zone', 'os-extended-server-attributes',
+        ###         'os-extended-status', 'os-extended-volumes', 'os-fixed-ips', 'os-flavor-access',
+        ###         'os-flavor-extra-specs', 'os-flavor-manage', 'os-flavor-rxtx', 'os-floating-ip-dns',
+        ###         'os-floating-ip-pools', 'os-floating-ips', 'os-floating-ips-bulk', 'os-fping',
+        ###         'os-hide-server-addresses', 'os-hosts', 'os-hypervisors', 'os-instance-actions',
+        ###         'os-instance-usage-audit-log', 'os-keypairs', 'os-lock-server', 'os-migrate-server',
+        ###         'os-migrations', 'os-multinic', 'os-multiple-create', 'os-networks',
+        ###         'os-networks-associate', 'os-pause-server', 'os-personality',
+        ###         'os-preserve-ephemeral-rebuild', 'os-quota-class-sets', 'os-quota-sets',
+        ###         'os-remote-consoles', 'os-rescue', 'os-scheduler-hints', 'os-security-group-default-rules',
+        ###         'os-security-groups', 'os-server-diagnostics', 'os-server-external-events',
+        ###         'os-server-groups', 'os-server-password', 'os-server-usage', 'os-services',
+        ###         'os-shelve', 'os-simple-tenant-usage', 'os-suspend-server', 'os-tenant-networks',
+        ###         'os-used-limits', 'os-user-data', 'os-virtual-interfaces', 'os-volumes', 'server-metadata',
+        ###         'server-migrations', 'servers', 'versions'
+        ###      ]
+        ###
         LOG.info(_LI("Loaded extensions: %s"),
                  sorted(self.loaded_extension_info.get_extensions().keys()))
         super(APIRouterV21, self).__init__(mapper)
@@ -415,14 +478,14 @@ class APIRouterV21(base_wsgi.Router):
         ext_no_inherits = []
 
         ### self.api_extension_manager: <stevedore.enabled.EnabledExtensionManager object at 0x57a51d0>
-        ### ext:
-        ###     <stevedore.extension.Extension object at 0x6b8c590>
-        ###     <stevedore.extension.Extension object at 0x6b8c790>
-        ###     <stevedore.extension.Extension object at 0x6b8cb50>
-        ###     <stevedore.extension.Extension object at 0x6ba9050>
-        ###     <stevedore.extension.Extension object at 0x6ba94d0>
-        ###     <stevedore.extension.Extension object at 0x6ba9890>
-        ###     <stevedore.extension.Extension object at 0x6a3cad0>
+        ### ext: <stevedore.extension.Extension object at 0x6de4f50>
+        ### ext.__dict__:
+        ###     {
+        ###         'obj': <Extension: name=Cells, alias=os-cells, version=1>,
+        ###         'entry_point': EntryPoint.parse('cells = nova.api.openstack.compute.cells:Cells'),
+        ###         'name': 'cells',
+        ###         'plugin': <class 'nova.api.openstack.compute.cells.Cells'>
+        ###     }
         for ext in self.api_extension_manager:
             for resource in ext.obj.get_resources():
                 if resource.inherits:
@@ -436,6 +499,12 @@ class APIRouterV21(base_wsgi.Router):
 
     @staticmethod
     def get_missing_core_extensions(extensions_loaded):
+        ### API_V21_CORE_EXTENSIONS:
+        ###     [
+        ###         'os-consoles', 'extensions', 'os-flavor-extra-specs', 'os-flavor-manage',
+        ###         'flavors', 'ips', 'os-keypairs', 'os-flavor-access', 'server-metadata',
+        ###         'servers', 'versions'
+        ###     ]
         extensions_loaded = set(extensions_loaded)
         missing_extensions = API_V21_CORE_EXTENSIONS - extensions_loaded
         return list(missing_extensions)
@@ -452,33 +521,75 @@ class APIRouterV21(base_wsgi.Router):
 
         Extensions define what resources they want to add through a
         get_resources function
+
+        1.遍历extension的所有resource
+        2.对于每个resource:
+            如果resource的inherits属性不为空,
+                从self.resources中获取resource.inherits所指定的resource
+                如果resource的controller属性为空,则将inherits指定的resource的controller赋值给它
+        3.使用resource的controller和inherits对应的resource构造一个wsgi.ResourceV21对象,
+            并将其添加到self.resources中, key为resource.collection
+        4.构造kargs, 其值如下:
+            {
+                'controller': wsgi_resource                 --- wsgi.ResourceV21()
+                'collection': resource.collection_actions   --- eg: {'detail': 'GET'}
+                'member': resource.member_actions           --- eg: {'action': 'POST'}
+                'parent_resource': resource.parent          --- 如果resource.parent为空, 则字典没有此key
+            }
+        5.执行mapper.resource(member_name, resource.collection,**kargs)
+            根据kwargs现有属性
+            def resource(self, member_name, collection_name, **kwargs):
+                if 'parent_resource' not in kwargs:
+                    kwargs['path_prefix'] = '{project_id}/'
+                else:
+                    parent_resource = kwargs['parent_resource']
+                    p_collection = parent_resource['collection_name']
+                    p_member = parent_resource['member_name']
+                    kwargs['path_prefix'] = '{project_id}/%s/:%s_id' % (p_collection,
+                                                                        p_member)
+                routes.Mapper.resource(self, member_name,
+                                             collection_name,
+                                             **kwargs)
+        6.如果resource.custom_routes_fn属性不为空,
+            执行resource.custom_routes_fn(mapper, wsgi_resource)
         """
 
+        ### ext.obj: <Extension: name=Servers, alias=servers, version=1>
         handler = ext.obj
         LOG.debug("Running _register_resources on %s", ext.obj)
 
+        ### get_resources =['servers']
         for resource in handler.get_resources():
             LOG.debug('Extended resource: %s', resource.collection)
 
             inherits = None
+            ### resource.inherits = None
             if resource.inherits:
                 inherits = self.resources.get(resource.inherits)
                 if not resource.controller:
                     resource.controller = inherits.controller
+            ### resource.controller: <nova.api.openstack.compute.servers.ServersController object at 0x85d4b90>
+            ### inherits: None
             wsgi_resource = wsgi.ResourceV21(resource.controller,
                                              inherits=inherits)
             self.resources[resource.collection] = wsgi_resource
+            ### wsgi_resource: <nova.api.openstack.wsgi.ResourceV21 object at 0x86d4690>
+            ### resource.collection_actions: {'detail': 'GET'}
+            ### resource.member_actions: {'action': 'POST'}
             kargs = dict(
                 controller=wsgi_resource,
                 collection=resource.collection_actions,
                 member=resource.member_actions)
 
+            ### resource.parent: None
             if resource.parent:
                 kargs['parent_resource'] = resource.parent
 
             # non core-API plugins use the collection name as the
             # member name, but the core-API plugins use the
             # singular/plural convention for member/collection names
+            ### resource.member_name: 'server'
+            ### resource.collection: 'servers'
             if resource.member_name:
                 member_name = resource.member_name
             else:
@@ -486,6 +597,7 @@ class APIRouterV21(base_wsgi.Router):
             mapper.resource(member_name, resource.collection,
                             **kargs)
 
+            ### resource.custom_routes_fn: None
             if resource.custom_routes_fn:
                     resource.custom_routes_fn(mapper, wsgi_resource)
 

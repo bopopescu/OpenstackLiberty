@@ -152,6 +152,7 @@ class APIRouterV21(nova.api.openstack.APIRouterV21):
     and method.
     """
     def __init__(self, init_only=None):
+        ### self._loaded_extension_info.get_extensions.get_keys() = []
         self._loaded_extension_info = extension_info.LoadedExtensionInfo()
         super(APIRouterV21, self).__init__(init_only)
 
