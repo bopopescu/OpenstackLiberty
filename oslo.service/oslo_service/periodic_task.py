@@ -1,3 +1,4 @@
+# coding=utf-8
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -28,6 +29,12 @@ LOG = logging.getLogger(__name__)
 DEFAULT_INTERVAL = 60.0
 
 
+# periodic_opts = [
+#     cfg.BoolOpt('run_external_periodic_tasks',
+#                 default=True,
+#                 help='Some periodic tasks can be run in a separate process. '
+#                      'Should we run them here?'),
+# ]
 def list_opts():
     """Entry point for oslo-config-generator."""
     return [(None, copy.deepcopy(_options.periodic_opts))]
@@ -55,6 +62,20 @@ def periodic_task(*args, **kwargs):
            run_immediately is omitted or set to 'False', the first time the
            task runs will be approximately N seconds after the task scheduler
            starts. If name is not provided, __name__ of function is used.
+
+    这个装饰器有如下两种用法:
+
+        1. 不使用参数, '@periodic_task', 这样会每隔默认间隔时间(60s)运行一次.
+
+        2. 使用参数:
+           @periodic_task(spacing=N [, run_immediately=[True|False]]
+           [, name=[None|"string"])
+           这样会每隔大约N秒运行一次. 如果间隔时间为负数, 此定时任务将会被禁用.
+           如果传入了run_immediately参数并且它的值为'True',
+             那么此定时任务将会在任务调度器开始运行之后马上运行第一次.
+           如果run_immediately参数缺省了或者被设置为'False',
+             那么此定时任务将会在任务调度器开始运行之后等待大约N秒再开始运行第一次.
+           如果name参数没有传入, 将会使用函数的__name__属性.
     """
     def decorator(f):
         # Test for old style invocation
@@ -68,6 +89,7 @@ def periodic_task(*args, **kwargs):
         f._periodic_name = kwargs.pop('name', f.__name__)
 
         # Control frequency
+        # 频率控制
         f._periodic_spacing = kwargs.pop('spacing', 0)
         f._periodic_immediate = kwargs.pop('run_immediately', False)
         if f._periodic_immediate:
@@ -87,6 +109,14 @@ def periodic_task(*args, **kwargs):
     # In the 'without-parenthesis' case, the original function will be passed
     # in as the first argument, like:
     #
+    #   periodic_task(f)
+
+    # NOTE(sirp): 为了允许这个装饰器在被使用时可以带括号也可以不带括号, 这个'if'判断是必要的.
+    #
+    # 在'使用括号'的情况下(传入了kwargs), 这个函数需要返回一个装饰器函数因为解释器将会这样使用它:
+    #   periodic_task(*args, **kwargs)(f)
+    #
+    # 在'不使用括号'的情况下, 原来的函数将会被作为第一个参数传入, 形如:
     #   periodic_task(f)
     if kwargs:
         return decorator

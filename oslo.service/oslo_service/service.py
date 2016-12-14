@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2011 Justin Santa Barbara
@@ -44,6 +45,27 @@ from oslo_service import threadgroup
 LOG = logging.getLogger(__name__)
 
 
+# eventlet_backdoor_opts = [
+#     cfg.StrOpt('backdoor_port',
+#                help="Enable eventlet backdoor.  %s" % help_for_backdoor_port),
+#     cfg.StrOpt('backdoor_socket',
+#                help="Enable eventlet backdoor, using the provided path"
+#                     " as a unix socket that can receive connections. This"
+#                     " option is mutually exclusive with 'backdoor_port' in"
+#                     " that only one should be provided. If both are provided"
+#                     " then the existence of this option overrides the usage of"
+#                     " that option.")
+# ]
+# service_opts = [
+#     cfg.BoolOpt('log_options',
+#                 default=True,
+#                 help='Enables or disables logging values of all registered '
+#                      'options when starting a service (at DEBUG level).'),
+#     cfg.IntOpt('graceful_shutdown_timeout',
+#                default=60,
+#                help='Specify a timeout after which a gracefully shutdown '
+#                     'server will exit. Zero value means endless wait.'),
+# ]
 def list_opts():
     """Entry point for oslo-config-generator."""
     return [(None, copy.deepcopy(_options.eventlet_backdoor_opts +
@@ -56,7 +78,18 @@ def _is_daemon():
     # not match, or ioctl() fails on the stdout file handle, we assume
     # the process is running in the background as a daemon.
     # http://www.gnu.org/software/bash/manual/bashref.html#Job-Control-Basics
+
+    # 前台进程的进程组与控制终端的进程组相同
+    #
+
     try:
+        # getpgrp(...)
+        #   getpgrp() -> pgrp
+        #   Return the current process group id.
+
+        # os.tcgetpgrp()
+        #   tcgetpgrp(fd) -> pgid
+        #   Return the process group associated with the terminal given by a fd.
         is_daemon = os.getpgrp() != os.tcgetpgrp(sys.stdout.fileno())
     except io.UnsupportedOperation:
         # Could not get the fileno for stdout, so we must be a daemon.
