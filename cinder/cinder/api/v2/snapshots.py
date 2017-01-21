@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2011 Justin Santa Barbara
 # All Rights Reserved.
 #
@@ -147,9 +148,19 @@ class SnapshotsController(wsgi.Controller):
     @wsgi.serializers(xml=SnapshotTemplate)
     def create(self, req, body):
         """Creates a new snapshot."""
+        # cinderclient中传入的值:
+        # body = {'snapshot': {'volume_id': volume_id,
+        #                      'force': force,
+        #                      'name': name,
+        #                      'description': description,
+        #                      'metadata': snapshot_metadata}}
         kwargs = {}
         context = req.environ['cinder.context']
 
+        # 检查body是否合法, body需要满足以下条件:
+        # 1.body存在
+        # 2.'snapshot' in body
+        # 3.body['snapshot']是个字典
         self.assert_valid_body(body, 'snapshot')
 
         snapshot = body['snapshot']
@@ -168,6 +179,10 @@ class SnapshotsController(wsgi.Controller):
         force = snapshot.get('force', False)
         msg = _LI("Create snapshot from volume %s")
         LOG.info(msg, volume_id, context=context)
+        # 对name和description做如下修改和判定:
+        # 1.如果name不为None, 去除name首尾的空白字符
+        # 2.检查name的长度, 要求0<len<255
+        # 3.如果description不为None, 检查description的长度, 要求0<len<255
         self.validate_name_and_description(snapshot)
 
         # NOTE(thingee): v2 API allows name instead of display_name
@@ -180,6 +195,8 @@ class SnapshotsController(wsgi.Controller):
             msg = _("Invalid value for 'force': '%s'") % error.message
             raise exception.InvalidParameterValue(err=msg)
 
+        # 如果force为True, 调用volume_api.create_snapshot_force
+        # 如果force为False, 调用volume_api.create_snapshot
         if force:
             new_snapshot = self.volume_api.create_snapshot_force(
                 context,
