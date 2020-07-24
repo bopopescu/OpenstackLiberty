@@ -521,7 +521,7 @@ class V6000ISCSIDriverTestCase(test.TestCase):
         vendor_name = "Violin Memory, Inc."
         tot_bytes = 100 * units.Gi
         free_bytes = 50 * units.Gi
-        bn0 = '/cluster/state/master_id'
+        bn0 = '/cluster/state/main_id'
         bn1 = "/vshare/state/global/1/container/myContainer/total_bytes"
         bn2 = "/vshare/state/global/1/container/myContainer/free_bytes"
         response1 = {bn0: '1'}
@@ -546,7 +546,7 @@ class V6000ISCSIDriverTestCase(test.TestCase):
     def test_update_stats_fails_data_query(self):
         backend_name = self.conf.volume_backend_name
         vendor_name = "Violin Memory, Inc."
-        bn0 = '/cluster/state/master_id'
+        bn0 = '/cluster/state/main_id'
         response1 = {bn0: '1'}
         response2 = {}
 
@@ -566,7 +566,7 @@ class V6000ISCSIDriverTestCase(test.TestCase):
         """Stats query to backend fails, but cached stats are available. """
         backend_name = self.conf.volume_backend_name
         vendor_name = "Violin Memory, Inc."
-        bn0 = '/cluster/state/master_id'
+        bn0 = '/cluster/state/main_id'
         response1 = {bn0: '1'}
         response2 = {}
 

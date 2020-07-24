@@ -30,7 +30,7 @@ class BayModel(resource.Resource):
         EXTERNAL_NETWORK, FIXED_NETWORK, DNS_NAMESERVER,
         DOCKER_VOLUME_SIZE, SSH_AUTHORIZED_KEY, COE
     ) = (
-        'name', 'image', 'flavor', 'master_flavor', 'keypair',
+        'name', 'image', 'flavor', 'main_flavor', 'keypair',
         'external_network', 'fixed_network', 'dns_nameserver',
         'docker_volume_size', 'ssh_authorized_key', 'coe'
     )
@@ -58,7 +58,7 @@ class BayModel(resource.Resource):
         ),
         MASTER_FLAVOR: properties.Schema(
             properties.Schema.STRING,
-            _('The flavor of the master node for this bay model.'),
+            _('The flavor of the main node for this bay model.'),
             constraints=[
                 constraints.CustomConstraint('nova.flavor')
             ]
@@ -124,7 +124,7 @@ class BayModel(resource.Resource):
             'name': self.properties[self.NAME],
             'image_id': self.properties[self.IMAGE],
             'flavor_id': self.properties[self.FLAVOR],
-            'master_flavor_id': self.properties[self.MASTER_FLAVOR],
+            'main_flavor_id': self.properties[self.MASTER_FLAVOR],
             'keypair_id': self.properties[self.KEYPAIR],
             'external_network_id': self.properties[self.EXTERNAL_NETWORK],
             'fixed_network': self.properties[self.FIXED_NETWORK],

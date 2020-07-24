@@ -29,75 +29,75 @@ class TestExclusiveRouterProcessor(base.BaseTestCase):
     def setUp(self):
         super(TestExclusiveRouterProcessor, self).setUp()
 
-    def test_i_am_master(self):
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        not_master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        master_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
-        not_master_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
+    def test_i_am_main(self):
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        not_main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        main_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
+        not_main_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
 
-        self.assertTrue(master._i_am_master())
-        self.assertFalse(not_master._i_am_master())
-        self.assertTrue(master_2._i_am_master())
-        self.assertFalse(not_master_2._i_am_master())
+        self.assertTrue(main._i_am_main())
+        self.assertFalse(not_main._i_am_main())
+        self.assertTrue(main_2._i_am_main())
+        self.assertFalse(not_main_2._i_am_main())
 
-        master.__exit__(None, None, None)
-        master_2.__exit__(None, None, None)
+        main.__exit__(None, None, None)
+        main_2.__exit__(None, None, None)
 
-    def test_master(self):
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        not_master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        master_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
-        not_master_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
+    def test_main(self):
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        not_main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        main_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
+        not_main_2 = l3_queue.ExclusiveRouterProcessor(FAKE_ID_2)
 
-        self.assertEqual(master._master, master)
-        self.assertEqual(not_master._master, master)
-        self.assertEqual(master_2._master, master_2)
-        self.assertEqual(not_master_2._master, master_2)
+        self.assertEqual(main._main, main)
+        self.assertEqual(not_main._main, main)
+        self.assertEqual(main_2._main, main_2)
+        self.assertEqual(not_main_2._main, main_2)
 
-        master.__exit__(None, None, None)
-        master_2.__exit__(None, None, None)
+        main.__exit__(None, None, None)
+        main_2.__exit__(None, None, None)
 
     def test__enter__(self):
-        self.assertFalse(FAKE_ID in l3_queue.ExclusiveRouterProcessor._masters)
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        master.__enter__()
-        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._masters)
-        master.__exit__(None, None, None)
+        self.assertFalse(FAKE_ID in l3_queue.ExclusiveRouterProcessor._mains)
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        main.__enter__()
+        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._mains)
+        main.__exit__(None, None, None)
 
     def test__exit__(self):
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        not_master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        master.__enter__()
-        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._masters)
-        not_master.__enter__()
-        not_master.__exit__(None, None, None)
-        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._masters)
-        master.__exit__(None, None, None)
-        self.assertFalse(FAKE_ID in l3_queue.ExclusiveRouterProcessor._masters)
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        not_main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        main.__enter__()
+        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._mains)
+        not_main.__enter__()
+        not_main.__exit__(None, None, None)
+        self.assertTrue(FAKE_ID in l3_queue.ExclusiveRouterProcessor._mains)
+        main.__exit__(None, None, None)
+        self.assertFalse(FAKE_ID in l3_queue.ExclusiveRouterProcessor._mains)
 
     def test_data_fetched_since(self):
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        self.assertEqual(master._get_router_data_timestamp(),
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        self.assertEqual(main._get_router_data_timestamp(),
                          datetime.datetime.min)
 
         ts1 = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
         ts2 = datetime.datetime.utcnow()
 
-        master.fetched_and_processed(ts2)
-        self.assertEqual(master._get_router_data_timestamp(), ts2)
-        master.fetched_and_processed(ts1)
-        self.assertEqual(master._get_router_data_timestamp(), ts2)
+        main.fetched_and_processed(ts2)
+        self.assertEqual(main._get_router_data_timestamp(), ts2)
+        main.fetched_and_processed(ts1)
+        self.assertEqual(main._get_router_data_timestamp(), ts2)
 
-        master.__exit__(None, None, None)
+        main.__exit__(None, None, None)
 
     def test_updates(self):
-        master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
-        not_master = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
+        not_main = l3_queue.ExclusiveRouterProcessor(FAKE_ID)
 
-        master.queue_update(l3_queue.RouterUpdate(FAKE_ID, 0))
-        not_master.queue_update(l3_queue.RouterUpdate(FAKE_ID, 0))
+        main.queue_update(l3_queue.RouterUpdate(FAKE_ID, 0))
+        not_main.queue_update(l3_queue.RouterUpdate(FAKE_ID, 0))
 
-        for update in not_master.updates():
-            raise Exception("Only the master should process a router")
+        for update in not_main.updates():
+            raise Exception("Only the main should process a router")
 
-        self.assertEqual(2, len([i for i in master.updates()]))
+        self.assertEqual(2, len([i for i in main.updates()]))

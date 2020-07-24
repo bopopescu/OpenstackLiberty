@@ -201,8 +201,8 @@ class L3AgentTestFramework(base.BaseSudoTestCase):
     interface %(ha_device_name)s
     virtual_router_id 1
     priority 50
-    garp_master_repeat 5
-    garp_master_refresh 10
+    garp_main_repeat 5
+    garp_main_refresh 10
     nopreempt
     advert_int 2
     track_interface {
@@ -328,7 +328,7 @@ class L3AgentTestCase(L3AgentTestFramework):
             self.agent, 'enqueue_state_change').start()
         router_info = self.generate_router_info(enable_ha=True)
         router = self.manage_router(self.agent, router_info)
-        utils.wait_until_true(lambda: router.ha_state == 'master')
+        utils.wait_until_true(lambda: router.ha_state == 'main')
 
         self.fail_ha_router(router)
         utils.wait_until_true(lambda: router.ha_state == 'backup')
@@ -336,7 +336,7 @@ class L3AgentTestCase(L3AgentTestFramework):
         utils.wait_until_true(lambda: enqueue_mock.call_count == 3)
         calls = [args[0] for args in enqueue_mock.call_args_list]
         self.assertEqual((router.router_id, 'backup'), calls[0])
-        self.assertEqual((router.router_id, 'master'), calls[1])
+        self.assertEqual((router.router_id, 'main'), calls[1])
         self.assertEqual((router.router_id, 'backup'), calls[2])
 
     def _expected_rpc_report(self, expected):
@@ -359,7 +359,7 @@ class L3AgentTestCase(L3AgentTestFramework):
         router2 = self.manage_router(self.agent, router_info)
 
         utils.wait_until_true(lambda: router1.ha_state == 'backup')
-        utils.wait_until_true(lambda: router2.ha_state == 'master')
+        utils.wait_until_true(lambda: router2.ha_state == 'main')
         utils.wait_until_true(
             lambda: self._expected_rpc_report(
                 {router1.router_id: 'standby', router2.router_id: 'active'}))
@@ -449,7 +449,7 @@ class L3AgentTestCase(L3AgentTestFramework):
                 n, len([line for line in out.strip().split('\n') if line]))
 
         if ha:
-            utils.wait_until_true(lambda: router.ha_state == 'master')
+            utils.wait_until_true(lambda: router.ha_state == 'main')
 
         with self.assert_max_execution_time(100):
             assert_num_of_conntrack_rules(0)
@@ -633,7 +633,7 @@ class L3AgentTestCase(L3AgentTestFramework):
             interface_name = router.get_external_device_name(port['id'])
             self._assert_no_ip_addresses_on_interface(router.ns_name,
                                                       interface_name)
-            utils.wait_until_true(lambda: router.ha_state == 'master')
+            utils.wait_until_true(lambda: router.ha_state == 'main')
 
             # Keepalived notifies of a state transition when it starts,
             # not when it ends. Thus, we have to wait until keepalived finishes
@@ -825,18 +825,18 @@ class L3HATestFramework(L3AgentTestFramework):
             self.NESTED_NAMESPACE_SEPARATOR, self.failover_agent.host)
         router2 = self.manage_router(self.failover_agent, router_info_2)
 
-        utils.wait_until_true(lambda: router1.ha_state == 'master')
+        utils.wait_until_true(lambda: router1.ha_state == 'main')
         utils.wait_until_true(lambda: router2.ha_state == 'backup')
 
         self.fail_ha_router(router1)
 
-        utils.wait_until_true(lambda: router2.ha_state == 'master')
+        utils.wait_until_true(lambda: router2.ha_state == 'main')
         utils.wait_until_true(lambda: router1.ha_state == 'backup')
 
     def test_ha_router_ipv6_radvd_status(self):
         router_info = self.generate_router_info(ip_version=6, enable_ha=True)
         router1 = self.manage_router(self.agent, router_info)
-        utils.wait_until_true(lambda: router1.ha_state == 'master')
+        utils.wait_until_true(lambda: router1.ha_state == 'main')
         utils.wait_until_true(lambda: router1.radvd.enabled)
 
         def _check_lla_status(router, expected):
@@ -877,7 +877,7 @@ class L3HATestFramework(L3AgentTestFramework):
                 ip_version=6, ipv6_subnet_modes=[slaac_mode],
                 interface_id=interface_id)
         router.process(self.agent)
-        utils.wait_until_true(lambda: router.ha_state == 'master')
+        utils.wait_until_true(lambda: router.ha_state == 'main')
 
         # Verify that router internal interface is present and is configured
         # with IP address from both the subnets.
